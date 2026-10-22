@@ -1,0 +1,24 @@
+# Receita para a Render (https://render.com): New > Blueprint, apontando para este repositório.
+services:
+  - type: web
+    name: slimerpg
+    runtime: node
+    plan: free
+    # As imagens já vêm no repositório (public/img), então o build só instala as dependências.
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /status
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      # A Render passa pelo proxy dela: sem isto o limite de tentativas de login enxergaria todos como o mesmo IP.
+      - key: TRUST_PROXY
+        value: "1"
+      # Contas por e-mail (veja "Contas" no README). Adicione estas em Environment, no painel do serviço:
+      #   DATABASE_URL    string de conexão de um Postgres (Neon, Supabase...). Sem ela as contas ficam num arquivo que some a cada reinício.
+      #   RESEND_API_KEY  ou SMTP_URL, para enviar o código de confirmação e a recuperação de senha (sem nenhum dos dois, o e-mail não é confirmado).
+      #   MAIL_FROM       remetente dos e-mails, por exemplo: SlimeRPG <contato@seudominio.com>
+      # Loja de skins (veja "Loja de skins" no README). Os valores NÃO ficam neste arquivo: o painel pede na hora do deploy.
+      - key: ADMIN_TOKEN        # senha para liberar skins (16+ caracteres). Sem ela a liberação fica desligada.
+        sync: false
+      # Opcionais (têm padrão): PIX_CHAVE, CONTATO_EMAIL, PIX_NOME, PIX_CIDADE. Adicione em Environment se quiser trocar.

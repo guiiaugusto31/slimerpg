@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b140f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>SlimeRPG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@500;700;800&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="vignette"></div>
+<div id="hurt"></div>
+
+<!-- Tela inicial -->
+<main id="title">
+  <section class="title-card">
+    <h1>Slime<span>RPG</span></h1>
+    <p class="tag">Uma floresta, vinte slimes, nenhuma trégua. Mate monstros, suba até o nível 20 e use a coroa.</p>
+    <canvas id="preview" width="260" height="190" aria-label="Pré-visualização do seu slime"></canvas>
+    <label class="field" for="nameIn">Nome do slime</label>
+    <input id="nameIn" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Como te chamam na floresta?">
+    <div class="field">Cor</div>
+    <div class="palette" id="palette" role="radiogroup" aria-label="Cor do slime"></div>
+    <label class="custom-color">Outra cor <input type="color" id="colorIn" value="#5fd35f"></label>
+    <!-- Conta por e-mail: só aparece quando o servidor tem contas ligadas (conta.js) -->
+    <div id="acct" class="acct" hidden>
+      <div id="acctOut">
+        <button type="button" id="acctOpen" class="acct-open">Entrar ou criar conta</button>
+        <p class="acct-sub">Com uma conta, o progresso fica salvo no servidor e vale em qualquer aparelho.</p>
+      </div>
+      <div id="acctIn" class="acct-row" hidden>
+        <span class="acct-who"><b id="acctMail"></b><small id="acctNote"></small></span>
+        <button type="button" id="acctManage">Conta</button>
+        <button type="button" id="acctLogout">Sair</button>
+      </div>
+    </div>
+    <button id="playBtn" class="primary">Entrar na floresta</button>
+    <p id="saveInfo" class="muted"></p>
+    <p id="status" class="status" role="status"></p>
+    <button type="button" id="rankOpenTitle" class="acct-open rank-open">Rankings</button>
+    <button type="button" id="shopOpenTitle" class="acct-open rank-open">Loja de skins</button>
+    <button type="button" class="acct-open rank-open snd-btn" title="Música e efeitos sonoros">Som: música e efeitos</button>
+    <details class="how">
+      <summary>Como jogar</summary>
+      <ul>
+        <li>Você só anda: <b>WASD</b> ou setas no PC, joystick no celular.</li>
+        <li>As armas atacam e usam habilidades sozinhas, no alvo mais próximo ou na direção do mouse.</li>
+        <li>A cada nível, cada atributo rola 1d3. Força, Destreza e Mana liberam armas; Saúde dá vida.</li>
+        <li>Ao morrer você perde o nível atual, mas guarda seus equipamentos.</li>
+        <li><b>I</b> abre a mochila (todos os itens aparecem, bloqueados até você ganhar), <b>M</b> as missões e <b>R</b> os rankings.</li>
+        <li>No centro do mapa dorme o <b>Dragão ancestral</b>. Só quem está no nível 20 consegue machucá-lo, e ele larga uma arma mítica.</li>
+      </ul>
+    </details>
+  </section>
+</main>
+
+<!-- Interface do jogo -->
+<div id="hud" hidden>
+  <section id="stats" class="panel">
+    <div class="who"><b id="hName">Slime</b><span id="hLvl">Nv 1</span></div>
+    <div class="bar hp"><i id="hpFill"></i><em id="hpText"></em></div>
+    <div class="bar xp"><i id="xpFill"></i><em id="xpText"></em></div>
+    <div class="attrs" id="attrs"></div>
+  </section>
+
+  <section id="lb" class="panel" aria-label="Ranking da sala"></section>
+  <div id="feed" aria-live="polite"></div>
+  <div id="toast" role="status"></div>
+  <canvas id="mini" width="156" height="98"></canvas>
+  <div id="zoneChip" hidden></div>
+  <div id="bossBar" hidden><b>Dragão ancestral</b><div class="bar"><i id="bossFill"></i></div><small id="bossText"></small></div>
+
+  <nav id="side">
+    <button id="btnInv" title="Mochila (I)">Mochila</button>
+    <button id="btnQuest" title="Missões (M)">Missões</button>
+    <button id="btnRank" title="Rankings (R)">Rankings</button>
+    <button id="btnShop" title="Loja de skins">Skins</button>
+    <button id="btnAim" title="Como as armas escolhem o alvo">Mira: alvo próximo</button>
+    <button class="snd-btn" title="Música e efeitos sonoros">Som: música e efeitos</button>
+  </nav>
+
+  <section id="slots" aria-label="Equipamento">
+    <div class="slot" id="slot0"><img alt=""><span class="cd"></span><b>1</b></div>
+    <div class="slot" id="slot1"><img alt=""><span class="cd"></span><b>2</b></div>
+    <div class="slot armor" id="slotA"><img alt=""><b>Peito</b></div>
+  </section>
+
+  <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div></div></div>
+</div>
+
+<!-- Loja de skins (só visuais) -->
+<aside id="shopPanel" class="drawer shop" hidden>
+  <header><h2>Loja de skins</h2><button class="x" data-close="shopPanel" aria-label="Fechar">×</button></header>
+  <div class="tabs" id="shopTabs" role="tablist">
+    <button data-tab="loja" role="tab" aria-selected="true">Loja</button>
+    <button data-tab="minhas" role="tab" aria-selected="false">Minhas skins</button>
+  </div>
+  <div id="shopBody"></div>
+</aside>
+
+<!-- Mochila -->
+<aside id="invPanel" class="drawer" hidden>
+  <header><h2>Mochila</h2><span id="invCount"></span><button class="x" data-close="invPanel" aria-label="Fechar">×</button></header>
+  <div class="equipped" id="equipped"></div>
+  <p class="hint" id="fuseHint" hidden>O mesmo item nos dois slots funde a habilidade: +50% de dano e área maior, um disparo por ciclo.</p>
+  <div class="starter"><span>Iniciais</span><div id="starterRow"></div></div>
+  <div class="tabs" id="invTabs" role="tablist"></div>
+  <div class="catalog" id="invGrid"></div>
+  <div class="detail" id="detail"><p class="muted">Toque em um item para ver os detalhes.</p></div>
+</aside>
+
+<!-- Missões -->
+<aside id="questPanel" class="drawer" hidden>
+  <header><h2>Missões</h2><button class="x" data-close="questPanel" aria-label="Fechar">×</button></header>
+  <p class="hint">Cada missão concede uma arma lendária. O progresso de abates e vitórias é guardado entre as vidas.</p>
+  <ul id="questList"></ul>
+</aside>
+
+<!-- Rankings -->
+<aside id="rankPanel" class="drawer" hidden>
+  <header><h2>Rankings</h2><button class="x" data-close="rankPanel" aria-label="Fechar">×</button></header>
+  <div class="tabs" id="rankTabs" role="tablist">
+    <button data-tab="pvp" role="tab" aria-selected="true">PvP</button>
+    <button data-tab="dragon" role="tab" aria-selected="false">Dragão</button>
+  </div>
+  <p class="hint" id="rankHint"></p>
+  <ol class="rank-list" id="rankList"></ol>
+  <p class="hint" id="rankYou"></p>
+  <p class="hint" id="rankNote"></p>
+</aside>
+
+<!-- Subida de nível -->
+<div id="lvlOverlay" hidden></div>
+
+<!-- Morte -->
+<div id="deathOverlay" hidden>
+  <div class="death-card">
+    <h2>Você caiu</h2>
+    <p id="deathText"></p>
+    <button id="respawnBtn" class="primary">Renascer</button>
+  </div>
+</div>
+
+<div id="connLost" hidden>
+  <div class="death-card">
+    <h2 id="connTitle">Conexão perdida</h2>
+    <p id="connText">O servidor parou de responder. Seu progresso está guardado neste navegador.</p>
+    <button class="primary" onclick="location.reload()">Reconectar</button>
+  </div>
+</div>
+
+<!-- Janela da conta (entrar, criar, confirmar e-mail, recuperar senha, excluir) -->
+<div id="acctModal" hidden>
+  <div class="acct-card" role="dialog" aria-modal="true"></div>
+</div>
+
+<script>var module = { exports: {} };</script>
+<script src="/game-data.js"></script>
+<script src="art.js"></script>
+<script src="fx.js"></script>
+<script src="conta.js"></script>
+<script src="qr.js"></script>
+<script src="loja.js"></script>
+<script src="audio.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

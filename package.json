@@ -1,0 +1,24 @@
+{
+  "name": "slimerpg",
+  "version": "0.1.0",
+  "description": "SlimeRPG — jogo .io multiplayer de floresta com elementos de MMORPG",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "imagens": "node tools/baixar-imagens.js",
+    "preview": "node tools/gerar-preview.js",
+    "test": "node test/sim.js && node test/contas.js && node test/ranking.js && node test/skins.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "nodemailer": "^10.2.0",
+    "pg": "^8.23.1",
+    "ws": "^8.18.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "pg-mem": "^3.0.14"
+  }
+}
