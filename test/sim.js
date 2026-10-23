@@ -89,11 +89,23 @@ async function main() {
   ok(pa.kills.cogumelo === 1, 'contou 1 kill de cogumelo');
   ok(D.xpNeed(1) === 5 && D.xpNeed(2) === 10 && D.xpNeed(3) === 77, 'curva inicial: 5 XP, 10 XP, depois 77 XP');
 
-  // 1 cogumelo (5 XP) leva do nível 1 ao 2, com 1d3 por atributo
+  // 1 cogumelo (5 XP) leva do nível 1 ao 2 e dá 8 pontos de atributo para o jogador distribuir
   ok(A.lvl.length === 1 && pa.level === 2 && pa.xp === 0, '1 cogumelo leva do nível 1 ao 2 (nível ' + pa.level + ', xp ' + pa.xp + ')');
-  const rolls = A.lvl[0] && A.lvl[0].rolls[0];
-  ok(rolls && D.ATTRS.every((k) => rolls[k] >= 1 && rolls[k] <= 3), 'dados 1d3 por atributo: ' + JSON.stringify(rolls));
-  ok(pa.stats.hlt === 1 + rolls.hlt && pa.hp === pa.maxHp, 'atributos somados e vida recuperada');
+  ok(A.lvl[0].gain && Object.values(A.lvl[0].gain).every((g) => g >= 1 && g <= 3) && pa.points === 0, 'cada nível rola 1d3 em cada atributo');
+  pa.points = 8;
+  const s0 = Object.assign({}, pa.stats);
+  ok(pa.hp === pa.maxHp, 'vida recuperada ao subir de nível (os atributos só sobem quando o jogador gasta os pontos)');
+  A.send({ t: 'alloc', k: 'hlt', n: 3 }); await sleep(100);
+  ok(pa.stats.hlt === s0.hlt + 3 && pa.points === 5, 'alloc: 3 pontos em Saúde (' + pa.stats.hlt + ', sobram ' + pa.points + ')');
+  A.send({ t: 'alloc', k: 'dex', n: 99 }); await sleep(100);
+  ok(pa.stats.dex === s0.dex + 5 && pa.points === 0, 'alloc nunca gasta mais pontos do que tem');
+  A.send({ t: 'alloc', k: 'man', n: 1 }); A.send({ t: 'alloc', k: 'xyz', n: 1 }); await sleep(100);
+  ok(pa.stats.man === s0.man && !('xyz' in pa.stats), 'sem pontos ou atributo inválido: nada acontece');
+  pa.points = 100; pa.stats.dex = 55; A.send({ t: 'alloc', k: 'dex', n: 20 }); await sleep(100);
+  ok(pa.stats.dex === D.ATTR_MAX && D.ATTR_MAX === 60 && pa.points === 95, 'máximo de 60 em um único atributo (sobram ' + pa.points + ')');
+  A.send({ t: 'alloc', k: 'dex', n: 1 }); A.send({ t: 'alloc', k: 'man', n: -5 }); A.send({ t: 'alloc', k: 'man', n: 1.5 }); await sleep(100);
+  ok(pa.stats.dex === 60 && pa.stats.man === s0.man + 1 && pa.points === 94, 'no máximo ou número inválido não passa (' + pa.stats.man + ')');
+  pa.points = 0; Object.assign(pa.stats, s0); recalcAll(pa); pa.hp = pa.maxHp;
 
   // 2 cogumelos levam do nível 2 ao 3
   const c2 = room.mobs.find((m) => m.key === 'cogumelo' && m !== cog), c3 = room.mobs.find((m) => m.key === 'cogumelo' && m !== cog && m !== c2);
@@ -359,6 +371,16 @@ async function main() {
   ok(ph.kills.javali === 5 && !ph.kills.xyz && ph.pk === 0 && ph.done.has('q_arco') && !ph.done.has('foo'), 'save: contadores e missões validados');
   hacker.ws.close();
 
+  console.log('Velocidade ao andar');
+  const sp = (l, f) => D.moveSpeed(l, f);
+  ok(sp(1, ['faca']) > sp(10, ['faca']) && sp(10, ['faca']) > sp(20, ['faca']), 'quanto menor o slime (nível mais baixo), mais rápido');
+  ok(sp(5, ['espada']) > sp(5, ['arco']) && sp(5, ['faca']) > sp(5, ['varinha']), 'com arma de perto anda um pouco mais rápido que com arma de longe');
+  const mix = sp(5, ['espada', 'arco']);
+  ok(mix > sp(5, ['arco']) && mix < sp(5, ['espada']), 'uma de perto e uma de longe fica no meio');
+  ok(sp(5, ['espada']) / sp(5, ['arco']) < 1.1, 'a diferença entre perto e longe é leve (menos de 10%)');
+  ok(sp(1, ['arco']) <= D.MOVE_BASE * 1.11 && sp(20, ['arco']) >= D.MOVE_BASE * 0.9, 'nenhum caso foge muito da velocidade base');
+  const pv = require('../server').makePlayer({}, 'T', '#ffffff', null); require('../server').recalc(pv);
+  ok(Math.abs(pv.spd - sp(1, ['faca'])) < 1e-9, 'o servidor usa a mesma conta (nível 1 com a faca)');
   console.log('\n' + oks + ' ok, ' + fails + ' falhas');
   process.exit(fails ? 1 : 0);
 }

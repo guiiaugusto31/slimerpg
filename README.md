@@ -40,9 +40,19 @@ Você só anda. As armas atacam e usam habilidades sozinhas. A mira tem dois mod
 
 **Velocidade ao andar.** Quanto menor o slime, mais rápido: de +10% sobre a base (170) no nível 1 a -8% no nível 20. Armas de perto deixam um pouco mais rápido que armas de longe: só corpo a corpo +6%, uma de cada +3%, só à distância +0%. A conta fica em `moveSpeed` (`game-data.js`) e vale igual no servidor e no cliente.
 
-**Atributos.** Força, Destreza, Mana e Saúde começam em 1. A cada nível você ganha **8 pontos** e distribui como quiser (botão Atributos ou tecla P), com **máximo de 60** em cada atributo. Ao morrer, o nível, os atributos e os pontos voltam ao começo. Isso é só no servidor: `alloc` ignora pontos que você não tem e passa do máximo. Saúde define a vida: `40 + 10 × Saúde + bônus do peitoral`. Força, Destreza e Mana liberam armas e aumentam o dano delas. Não existe barra de mana.
+**Atributos.** Força, Destreza, Mana e Saúde começam em 1. A cada nível o servidor **rola um dado 1d3 para cada atributo** (média de 2 por atributo, então o nível 20 dá em média 39 de cada), com **máximo de 60**. Não há mais pontos para distribuir; o painel Atributos (tecla P) mostra os valores. Ao morrer, o nível e os atributos voltam ao começo. Pontos antigos guardados ainda podem ser gastos (`alloc` ignora pontos que você não tem e passa do máximo). Saúde define a vida: `40 + 10 × Saúde + bônus do peitoral`. Força, Destreza e Mana liberam armas e aumentam o dano delas. Não existe barra de mana.
 
-**Ataques dos monstros.** Cada monstro comum tem um ataque especial com aviso vermelho no chão antes de sair (dá para desviar): cogumelo solta esporos em volta, coelho pula e cai na sua posição, lobo dá duas garras em cone, javali faz uma investida em linha, broto levanta raízes sob você, aranha atira uma bola de teia em linha reta (acerta o primeiro no caminho e deixa lento), árvore anciã derruba um galho pesado. Os números ficam em `sp` de cada monstro em `game-data.js`.
+**Habilidades de martelo e maça:** a pancada cai no pé do alvo (e pega quem estiver em volta dele); cajado e sinos explodem em volta de quem usa.
+
+**Misturas de armas.** Cada arma tem um papel e cada par de papéis tem uma combinação própria (as 36 combinações de armas diferentes funcionam, com uma recarga só e +10% de dano):
+- arco (flecha), varinha (tiro que se espalha em 5 estilhaços teleguiados para outros alvos perto), martelo, maça e cajado (pancada no pé do alvo), espada e chicote (corte em cone), rapieira (investida), sinos (cura).
+- flecha + corte ou pancada: uma flecha só, e ao acertar sai o corte/pancada no impacto. Flecha + varinha: 3 flechas que estouram em estilhaços. Flecha + sinos: flechas que curam.
+- varinha + pancada: a pancada cai no alvo e saem 5 tiros de dentro dela. Varinha + corte: o tiro solta o corte e se espalha. Varinha + sinos: estilhaços que curam.
+- pancada + pancada: terremoto (segunda onda maior). Pancada + corte: onda de corte saindo da pancada. Pancada + investida: investe e bate no fim. Pancada ou corte + sinos: rouba vida (5% por inimigo atingido, até 3).
+- corte + corte: corte em X. Corte + investida: investe e corta no fim. Rapieira + sinos: rastro de cura por 2 s.
+Se a mistura especial não tem alvo, as duas habilidades funcionam separadas (o sino ainda cura sozinho). O código está em `MIX_SPECIAL` no `server.js`.
+
+**Ataques dos monstros.** Cada monstro comum tem um ataque especial com aviso vermelho no chão antes de sair (dá para desviar): cogumelo solta esporos em volta, coelho pula e cai na sua posição, lobo morde em cone (uma boca de dentes se fecha na frente dele), javali faz uma investida em linha, broto levanta raízes sob você, aranha atira uma bola de teia em linha reta (acerta o primeiro no caminho e deixa lento), árvore anciã derruba um galho pesado (núcleo marcado em dourado: dano total e atordoa; borda: metade do dano, sem atordoar). Habilidades mistas têm animação própria por par de armas (36 combinações). As cores das habilidades são bem vivas (tabela `VIVID` em `public/fx.js`). Os números ficam em `sp` de cada monstro em `game-data.js`.
 
 **Armas.** Você equipa 2 armas e 1 peitoral. A faca inicial causa dano de cerca de 30% acima do seu maior atributo mais 1, e alcança 50 de distância. As outras são 9 armas em 6 faixas, com requisito por atributo:
 
@@ -93,7 +103,7 @@ Armas de perto (martelo, espada, chicote, sinos) acertam vários inimigos de uma
 | 4 | Charneca dos Javalis | Javali-espinho | 35 |
 | 5 | Bosque Ancião | Broto ancião | 55 |
 | 6 | Ninho das Aranhas | Aranha-véu (deixa lento) | 80 |
-| 7 | Clareira Anciã | Árvore anciã (lenta e pesada, entre a aranha e o dragão) | 95 |
+| 7 | Clareira Anciã | Árvore anciã (lenta e pesada, entre a aranha e o dragão; só 5 por sala, bem espaçadas) | 95 |
 | centro | Toca do dragão | Dragão ancestral | 1200 |
 
 **Dragão ancestral.** Dorme no centro do mapa e é muito mais forte que qualquer outro monstro. Só quem está no nível 20 consegue machucá-lo. Enquanto ninguém o acerta, ele não anda nem ataca; ao levar um golpe, acorda e persegue quem mais o machucou. Ele tem três ataques: garra (perto), sopro de fogo em cone e pancada no chão em área. O sopro e a pancada são **avisados na tela** antes de sair (cone ou círculo vermelho), então dá para desviar. Abaixo de 30% de vida ele enlouquece: fica mais rápido e ataca mais. Se ninguém o acertar por 10 segundos, ele volta para casa, dorme e se cura. A vida dele cresce 20% por jogador extra que o esteja machucando (até 12 jogadores), então um grupo grande não passa por cima. Quem causar pelo menos 6% da vida dele ganha **uma arma mítica aleatória** que ainda não tem e, a cada vitória, ainda tem **50% de chance de levar o Peitoral Dracônico** (até conseguir). Ele volta 5 minutos depois.

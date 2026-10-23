@@ -20,13 +20,13 @@
 
   // Paleta da arma: c = cor principal, h = brilho, d = sombra.
   var palCache = {};
+  // Cores bem vivas por tipo de arma, para as habilidades aparecerem bem na tela (as cores dos itens em si ficam como estão)
+  var VIVID = { faca: '#9be8ff', espada: '#35b6ff', martelo: '#ff7a1f', maca: '#ffd21f', rapieira: '#ff3d9e', arco: '#3dff5c', chicote: '#ff2f3f', varinha: '#b266ff', cajado: '#18f0d8', sinos: '#ffe433' };
   function pal(fam, tier) {
     var key = fam + tier, p = palCache[key];
     if (p) return p;
-    var base = FAM[fam] ? FAM[fam].color : '#ffb347';
-    if (tier >= 6) p = { c: '#ff6a3a', h: '#ffe2a8', d: '#7a1a10' };
-    else if (tier === 5) p = { c: mix(base, '#ffd36b', 0.55), h: '#fff3c4', d: dark(base, 0.4) };
-    else p = { c: tier >= 3 ? mix(base, GD.TIER_COLORS[tier - 1], 0.5) : base, h: light(base, 0.6), d: dark(base, 0.35) };
+    var base = VIVID[fam] || (FAM[fam] ? FAM[fam].color : '#ffb347');
+    p = { c: base, h: mix(base, '#ffffff', tier >= 5 ? 0.5 : 0.35), d: dark(base, 0.4) }; // só a cor da arma e um tom claro dela
     return (palCache[key] = p);
   }
   function rand(seed) { // sorteio rápido e repetível (o mesmo efeito sempre sai igual)
@@ -42,7 +42,7 @@
   var ONDA_R = 0.444, MOUTH = { x: 137, y: -60 };
   function fxImg(n) { return window.ART && window.ART.img ? window.ART.img(n) : null; }
 
-  var DUR = { thrust: 0.18, smash: 0.42, arc: 0.3, ring: 0.36, orbx: 0.42, s_burst: 0.62, s_cone: 0.45, s_dash: 0.38, d_breath: 0.85, d_slam: 1.0, d_claw: 0.36, ms: 0.7, hit: 0.24, pop: 0.26, dust: 0.55, lvl: 0.95 };
+  var DUR = { thrust: 0.18, smash: 0.42, arc: 0.3, ring: 0.36, orbx: 0.42, s_burst: 0.62, s_cone: 0.45, s_dash: 0.38, d_breath: 0.85, d_slam: 1.0, d_claw: 0.36, ms: 0.7, mixfx: 0.9, healtrail: 2.0, hit: 0.24, pop: 0.26, dust: 0.55, lvl: 0.95 };
   function dur(kind) { return DUR[kind] || 0.3; }
 
   function glow(g, x, y, r, c, a) {
@@ -63,6 +63,13 @@
   }
 
   /* ---------- efeitos de golpe e de habilidade ---------- */
+  // Desenho da habilidade mista combina com o tipo de habilidade das duas armas: explosão (estrela), cone (pétalas), investida (cruz), tiro (espiral)
+  var KSTYLE = { burst: 1, cone: 2, dash: 3, volley: 0, bolt: 0 };
+  function mixStyle(a, b) {
+    var ka = FAM[a] && FAM[a].skill ? FAM[a].skill.kind : 'burst', kb = FAM[b] && FAM[b].skill ? FAM[b].skill.kind : 'burst';
+    var x = KSTYLE[ka], y = KSTYLE[kb];
+    return x === y ? x : ({ '01': 0, '02': 2, '03': 3, '12': 1, '13': 3, '23': 2 })[Math.min(x, y) + '' + Math.max(x, y)];
+  }
   function drawFx(g, f, T) {
     var d = dur(f.kind), p = f.age / d;
     if (p >= 1 || p < 0) return;
@@ -181,6 +188,50 @@
         glow(g, to[0], to[1], 22, P.h, 0.6 * a);
         break;
       }
+      case 'mixfx': { // habilidade mista: desenho único por par de armas (cores de cada uma, número de braços e estilo vêm do par)
+        var fa = f.fam, fb = typeof f.extra === 'string' && FAM[f.extra] ? f.extra : fa, ks = [fa, fb].sort(), hh = 0, ci;
+        for (ci = 0; ci < (ks[0] + ks[1]).length; ci++) hh = (hh * 31 + (ks[0] + ks[1]).charCodeAt(ci)) % 9973;
+        var PA = pal(fa, tier), PB = pal(fb, tier), arms = 3 + hh % 5, style = mixStyle(fa, fb), rad2 = f.size * (0.25 + 0.75 * e3);
+        glow(g, f.x, f.y, f.size * 0.9, PA.c, 0.45 * a);
+        var MR = { arco: 'flecha', varinha: 'magia', martelo: 'pancada', maca: 'pancada', cajado: 'pancada', espada: 'corte', chicote: 'corte', rapieira: 'corte', sinos: 'sinos' };
+        var mimg = fxImg('fx_mix_' + (MR[fa] === 'magia' || MR[fb] === 'magia' ? 'magia' : MR[fa] === 'flecha' || MR[fb] === 'flecha' ? 'flecha' : MR[fa] === 'sinos' || MR[fb] === 'sinos' ? 'sinos' : MR[fa] === 'pancada' || MR[fb] === 'pancada' ? 'pancada' : MR[fa] === MR[fb] ? MR[fa] : 'ouro'));
+        if (mimg) { // arte feita por IA, somada à luz do chão; gira devagar e some no fim
+          var ms = f.size * (0.9 + 0.5 * e3), mal = Math.min(1, f.age * 10) * a;
+          g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.max(0, Math.min(1, mal * 0.8));
+          g.translate(f.x, f.y); g.rotate(T * 1.6 + hh); g.drawImage(mimg, -ms, -ms, ms * 2, ms * 2);
+          g.globalAlpha *= 0.45; g.rotate(-T * 3.2 - hh * 2); g.drawImage(mimg, -ms * 0.62, -ms * 0.62, ms * 1.24, ms * 1.24);
+          g.restore();
+        }
+        for (i = 0; i < 2; i++) { var rp = Math.max(0, Math.min(1, p * 1.2 - i * 0.18)); g.strokeStyle = rgba(i ? PB.c : PA.c, (1 - rp) * 0.95); g.lineWidth = 5 * (1 - rp) + 1; g.beginPath(); g.arc(f.x, f.y, f.size * (0.15 + 0.85 * (1 - Math.pow(1 - rp, 2))), 0, TAU); g.stroke(); }
+        var rot = T * 3 + hh, segs = 14;
+        for (i = 0; i < arms; i++) {
+          var a0 = rot + i * TAU / arms;
+          for (var sg2 = 0; sg2 < segs; sg2++) {
+            var u = sg2 / segs, rr3 = rad2 * u, ang2 = style === 0 ? a0 + u * 2.4 : style === 1 ? a0 + Math.sin(u * 5 + T * 6) * 0.25 : style === 2 ? a0 + Math.sin(u * Math.PI) * 0.7 : a0 + (sg2 % 2 ? 0.08 : -0.08);
+            var px = f.x + Math.cos(ang2) * rr3, py = f.y + Math.sin(ang2) * rr3, col = mix(PA.c, PB.c, u);
+            g.fillStyle = rgba(col, a * (0.35 + 0.65 * u)); g.beginPath(); g.arc(px, py, (style === 2 ? 6 : 4) * (1 - u * 0.4) * a + 1.5, 0, TAU); g.fill();
+          }
+          var tx = f.x + Math.cos(a0 + (style === 0 ? 2.4 : 0)) * rad2, ty = f.y + Math.sin(a0 + (style === 0 ? 2.4 : 0)) * rad2;
+          glow(g, tx, ty, 18 * a + 6, i % 2 ? PB.c : PA.c, 0.95 * a);
+          if (style === 1) spikes(g, tx, ty, 2, 14 * a + 3, 4, a0, 0.3, rgba(PB.h, a));
+        }
+        spikes(g, f.x, f.y, 6, f.size * 0.55 * e3, arms * 2, -rot, 0.07, rgba(PB.c, a * 0.6));
+        glow(g, f.x, f.y, 20 * a + 6, PB.h, 0.7 * a);
+        break;
+      }
+      case 'healtrail': { // rapieira + sinos: faixa de cura no chão por 2 s, com brilhos subindo
+        var to2 = f.extra || [f.x, f.y], gA = Math.max(0, Math.min(1, (1 - p) * 3)) * Math.min(1, f.age * 8), pls = 0.7 + 0.3 * Math.sin(T * 9);
+        g.globalCompositeOperation = 'source-over';
+        g.strokeStyle = 'rgba(20,70,40,' + (0.45 * gA) + ')'; g.lineWidth = 44; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(to2[0], to2[1]); g.stroke();
+        g.globalCompositeOperation = 'lighter';
+        g.strokeStyle = rgba('#5dff9a', gA * 0.55 * pls); g.lineWidth = 34; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(to2[0], to2[1]); g.stroke();
+        g.strokeStyle = rgba('#d9ffe8', gA * 0.7); g.lineWidth = 6; g.stroke();
+        for (i = 0; i < 14; i++) {
+          var u3 = (i * 0.137 + 0.05) % 1, up3 = ((f.age * 0.7 + i * 0.31) % 1), sx3 = f.x + (to2[0] - f.x) * u3 + Math.sin(i * 7 + f.age * 3) * 10, sy3 = f.y + (to2[1] - f.y) * u3 - up3 * 34;
+          g.fillStyle = rgba(i % 2 ? '#ffffff' : '#7dffb3', gA * (1 - up3)); g.fillRect(sx3 - 1, sy3 - 5, 2, 10); g.fillRect(sx3 - 5, sy3 - 1, 10, 2);
+        }
+        break;
+      }
       case 'ms': { // ataques especiais dos monstros comuns (desenhados no estilo do jogo: contorno escuro + cor do bicho)
         var mk = f.fam, rad = f.size, ink = 'rgba(40,24,30,' + (0.85 * a) + ')';
         if (mk === 'cogumelo') { // nuvem de esporos
@@ -194,14 +245,22 @@
           g.globalCompositeOperation = 'source-over';
           g.strokeStyle = rgba('#e9d9b0', a * 0.9); g.lineWidth = 8 * a + 1; g.beginPath(); g.arc(f.x, f.y, rad * (0.3 + 0.7 * e3), 0, TAU); g.stroke();
           for (i = 0; i < 10; i++) { var da = i * TAU / 10 + R() * 0.3, dr = rad * (0.3 + 0.7 * e3); g.fillStyle = rgba('#c9b27c', a * 0.8); g.beginPath(); g.arc(f.x + Math.cos(da) * dr, f.y + Math.sin(da) * dr - p * 10, 7 * a + 2, 0, TAU); g.fill(); }
-        } else if (mk === 'lobo') { // duas garras
+        } else if (mk === 'lobo') { // mordida: duas arcadas de dentes que se fecham em cima do alvo
           g.globalCompositeOperation = 'source-over';
-          for (i = -1; i <= 1; i += 2) {
-            var ca = f.a + i * 0.32, sw2 = Math.min(1, p * 3);
-            g.strokeStyle = rgba('#ffffff', a); g.lineWidth = 7 * a + 1; g.beginPath(); g.moveTo(f.x + Math.cos(ca - 0.5) * rad * 0.3, f.y + Math.sin(ca - 0.5) * rad * 0.3);
-            g.quadraticCurveTo(f.x + Math.cos(ca) * rad * 0.9, f.y + Math.sin(ca) * rad * 0.9, f.x + Math.cos(ca + 0.5 * sw2) * rad * 0.35, f.y + Math.sin(ca + 0.5 * sw2) * rad * 0.35); g.stroke();
-            g.strokeStyle = 'rgba(120,150,190,' + (0.8 * a) + ')'; g.lineWidth = 3; g.stroke();
+          var jx = f.x + Math.cos(f.a) * rad * 0.62, jy = f.y + Math.sin(f.a) * rad * 0.62, js = rad * 0.55;
+          var snap = Math.min(1, p / 0.32), open2 = (1 - snap * snap) * 0.95 + 0.04, shake = p > 0.32 && p < 0.5 ? Math.sin(p * 120) * 2.5 : 0, fadeJ = p > 0.62 ? 1 - (p - 0.62) / 0.38 : 1;
+          g.save(); g.translate(jx + shake * Math.cos(f.a + 1.57), jy + shake * Math.sin(f.a + 1.57)); g.rotate(f.a); g.globalAlpha = fadeJ;
+          for (var jw = -1; jw <= 1; jw += 2) { // jw = -1 mandíbula de cima, 1 de baixo (no eixo do golpe)
+            g.save(); g.scale(1, jw);
+            var ang3 = open2 * 0.9, nT = 7, gy = js * 0.2 + js * 0.8 * open2 * 0.9;
+            g.translate(0, -gy * 0.6);
+            g.fillStyle = '#9b2c3a'; g.strokeStyle = 'rgba(30,14,20,.95)'; g.lineWidth = 4; g.beginPath(); g.moveTo(-js * 0.95, -js * 0.35); g.quadraticCurveTo(0, -js * 0.95, js * 0.95, -js * 0.35); g.lineTo(js * 0.8, -js * 0.08); g.quadraticCurveTo(0, -js * 0.45, -js * 0.8, -js * 0.08); g.closePath(); g.fill(); g.stroke(); // gengiva
+            g.fillStyle = '#ffffff';
+            for (i = 0; i < nT; i++) { var tx2 = -js * 0.78 + i * (js * 1.56 / (nT - 1)), big = (i === 1 || i === nT - 2) ? 1.5 : 1, th = js * 0.34 * big, tw = js * 0.12; g.strokeStyle = 'rgba(30,14,20,.95)'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(tx2 - tw, -js * 0.12 + Math.abs(i - 3) * 0.6); g.lineTo(tx2, -js * 0.12 + th); g.lineTo(tx2 + tw, -js * 0.12 + Math.abs(i - 3) * 0.6); g.closePath(); g.fill(); g.stroke(); }
+            g.restore();
           }
+          g.restore();
+          if (p > 0.3 && p < 0.55) { g.strokeStyle = rgba('#ffffff', 1 - (p - 0.3) / 0.25); g.lineWidth = 3; for (i = 0; i < 6; i++) { var ra3 = f.a + (i - 2.5) * 0.28, r0 = js * 0.5 + (p - 0.3) * 120; g.beginPath(); g.moveTo(jx + Math.cos(ra3) * r0, jy + Math.sin(ra3) * r0); g.lineTo(jx + Math.cos(ra3) * (r0 + 14), jy + Math.sin(ra3) * (r0 + 14)); g.stroke(); } } // faíscas do impacto
         } else if (mk === 'javali') { // rastro de investida
           g.globalCompositeOperation = 'source-over';
           var ex = f.x + Math.cos(f.a) * rad, ey = f.y + Math.sin(f.a) * rad;
@@ -232,7 +291,8 @@
         } else if (mk === 'arvore') { // galho que despenca com folhas douradas
           g.globalCompositeOperation = 'source-over';
           var fall = Math.min(1, p * 4);
-          g.fillStyle = 'rgba(60,30,10,' + (0.35 * a) + ')'; g.beginPath(); g.arc(f.x, f.y, rad * (0.4 + 0.6 * e3), 0, TAU); g.fill();
+          g.fillStyle = 'rgba(60,30,10,' + (0.3 * a) + ')'; g.beginPath(); g.arc(f.x, f.y, rad, 0, TAU); g.fill(); // área toda que machuca
+          g.fillStyle = 'rgba(90,40,10,' + (0.35 * a) + ')'; g.beginPath(); g.arc(f.x, f.y, rad * 0.6, 0, TAU); g.fill(); g.strokeStyle = rgba('#f2c14e', a * 0.9); g.lineWidth = 3; g.beginPath(); g.arc(f.x, f.y, rad * 0.6, 0, TAU); g.stroke(); // núcleo: dano total e atordoa
           g.save(); g.translate(f.x, f.y - (1 - fall) * rad * 1.3); g.rotate(0.5);
           g.fillStyle = ink; g.fillRect(-rad * 0.95, -13, rad * 1.9, 26); g.fillStyle = rgba('#8a5a32', a); g.fillRect(-rad * 0.9, -9, rad * 1.8, 18); g.restore();
           for (i = 0; i < 14; i++) { var la = R() * TAU, lr = rad * (0.2 + 0.9 * e3) * R(); g.fillStyle = rgba(i % 2 ? '#f2c14e' : '#d98b2b', a); g.beginPath(); g.ellipse(f.x + Math.cos(la) * lr, f.y + Math.sin(la) * lr - p * 20, 8 * a + 2, 4 * a + 1, la, 0, TAU); g.fill(); }
@@ -384,13 +444,21 @@
   }
 
   /* ---------- projéteis ---------- */
+  // Flecha colorida: haste e penas na cor do arco, ponta clara com contorno escuro e rastro sempre aceso (dá para seguir cada flecha na tela)
   function arrow(g, x, y, ang, P, tier, T, trail) {
     g.save(); g.translate(x, y); g.rotate(ang);
-    if (trail) { g.globalCompositeOperation = 'lighter'; var tg = g.createLinearGradient(-52, 0, 0, 0); tg.addColorStop(0, rgba(P.c, 0)); tg.addColorStop(1, rgba(P.h, 0.6)); g.strokeStyle = tg; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(-52, 0); g.lineTo(-6, 0); g.stroke(); g.globalCompositeOperation = 'source-over'; }
-    g.strokeStyle = '#e8dfc8'; g.lineWidth = 2.6; g.lineCap = 'round'; g.beginPath(); g.moveTo(-18, 0); g.lineTo(10, 0); g.stroke();
-    g.fillStyle = tier >= 5 ? '#ffe9a8' : '#ece6d4'; g.beginPath(); g.moveTo(17, 0); g.lineTo(8, -4.5); g.lineTo(10, 0); g.lineTo(8, 4.5); g.closePath(); g.fill();
-    g.fillStyle = P.c; g.beginPath(); g.moveTo(-18, 0); g.lineTo(-24, -5); g.lineTo(-13, -1); g.closePath(); g.fill(); g.beginPath(); g.moveTo(-18, 0); g.lineTo(-24, 5); g.lineTo(-13, 1); g.closePath(); g.fill();
-    if (tier >= 4) { g.globalCompositeOperation = 'lighter'; glow(g, 14, 0, 11 + tier, P.h, 0.55); }
+    g.globalCompositeOperation = 'lighter';
+    var tg = g.createLinearGradient(-70, 0, 0, 0); tg.addColorStop(0, rgba(P.c, 0)); tg.addColorStop(1, rgba(P.c, 0.85));
+    g.strokeStyle = tg; g.lineWidth = 7; g.lineCap = 'round'; g.beginPath(); g.moveTo(-70, 0); g.lineTo(-6, 0); g.stroke();
+    g.strokeStyle = rgba(P.h, 0.7); g.lineWidth = 2.5; g.beginPath(); g.moveTo(-40, 0); g.lineTo(-6, 0); g.stroke();
+    glow(g, 8, 0, 16 + tier, P.c, 0.55);
+    g.globalCompositeOperation = 'source-over';
+    g.strokeStyle = 'rgba(20,12,16,.85)'; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(-18, 0); g.lineTo(11, 0); g.stroke(); // contorno
+    g.strokeStyle = P.c; g.lineWidth = 3.6; g.beginPath(); g.moveTo(-18, 0); g.lineTo(11, 0); g.stroke();
+    g.fillStyle = 'rgba(20,12,16,.85)'; g.beginPath(); g.moveTo(21, 0); g.lineTo(6, -7.5); g.lineTo(9, 0); g.lineTo(6, 7.5); g.closePath(); g.fill();
+    g.fillStyle = P.h; g.beginPath(); g.moveTo(18, 0); g.lineTo(8, -5); g.lineTo(10, 0); g.lineTo(8, 5); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(20,12,16,.85)'; g.beginPath(); g.moveTo(-17, 0); g.lineTo(-27, -7.5); g.lineTo(-11, -1); g.closePath(); g.fill(); g.beginPath(); g.moveTo(-17, 0); g.lineTo(-27, 7.5); g.lineTo(-11, 1); g.closePath(); g.fill();
+    g.fillStyle = P.h; g.beginPath(); g.moveTo(-18, 0); g.lineTo(-25, -5.5); g.lineTo(-13, -1); g.closePath(); g.fill(); g.beginPath(); g.moveTo(-18, 0); g.lineTo(-25, 5.5); g.lineTo(-13, 1); g.closePath(); g.fill();
     g.restore();
   }
   function drawProj(g, e, T) {

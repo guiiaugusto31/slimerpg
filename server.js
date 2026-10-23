@@ -114,7 +114,7 @@ async function serveRanking(req, res) {
 
 /* ------------------------------ salas e entidades ------------------------------ */
 function newRoom() {
-  const room = { id: nextRoomId++, players: new Map(), mobs: [], projs: [], ev: [], t: 0, now: 0, nid: 1, boss: null, quiet: false };
+  const room = { id: nextRoomId++, players: new Map(), mobs: [], projs: [], later: [], ev: [], t: 0, now: 0, nid: 1, boss: null, quiet: false };
   const tw = D.ZONES.reduce((s, z) => s + z.weight, 0);
   D.ZONES.forEach((z, zi) => {
     const n = Math.round((D.MOB_COUNT * z.weight) / tw);
@@ -127,7 +127,7 @@ function newRoom() {
 
 function makeMob(room, zi) {
   const z = D.ZONES[zi], def = D.MOBS[z.mob];
-  const m = { id: room.nid++, isMob: true, key: z.mob, ki: MOB_KEYS.indexOf(z.mob), def, zi, r: def.r, maxHp: def.hp, alive: true, respT: 0 };
+  const m = { room, id: room.nid++, isMob: true, key: z.mob, ki: MOB_KEYS.indexOf(z.mob), def, zi, r: def.r, maxHp: def.hp, alive: true, respT: 0 };
   resetMob(m);
   return m;
 }
@@ -155,9 +155,12 @@ function resetMob(m) {
   m.cast = null; m.spCd = undefined;
   const z = D.ZONES[m.zi];
   let ang, nd;
-  for (let k = 0; k < 8; k++) { // sorteia de novo se cair dentro da toca do dragão
+  for (let k = 0; k < 24; k++) { // sorteia de novo se cair dentro da toca do dragão ou perto demais de outro da mesma zona
     ang = Math.random() * Math.PI * 2; nd = rnd(z.min, Math.min(z.max, W.wall - 0.03));
-    if (Math.hypot(Math.cos(ang) * nd * W.rx, Math.sin(ang) * nd * W.ry) > D.BOSS.clear) break;
+    const cx = W.cx + Math.cos(ang) * nd * W.rx, cy = W.cy + Math.sin(ang) * nd * W.ry;
+    if (Math.hypot(Math.cos(ang) * nd * W.rx, Math.sin(ang) * nd * W.ry) <= D.BOSS.clear) continue;
+    if (z.gap && m.room && m.room.mobs.some((o) => o !== m && o.zi === m.zi && o.hx !== undefined && Math.hypot(o.hx - cx, o.hy - cy) < z.gap)) continue;
+    break;
   }
   m.x = m.hx = W.cx + Math.cos(ang) * nd * W.rx;
   m.y = m.hy = W.cy + Math.sin(ang) * nd * W.ry;
@@ -173,7 +176,7 @@ function makePlayer(ws, name, color, save) {
     inv: [], equip: { w: ['faca', null], a: 'vital_0' }, kills: {}, pk: 0, done: new Set(),
     alive: false, protectUntil: 0, stun: 0, slowT: 0, wt: [0, 0], st: [0, 0],
     combatT: 0, aliveT: 0, nodT: 0, oneHits: 0, lastSave: -99, saveDirty: false,
-    armor: { hp: 0, rp: 0, rm: 0 }, armorItem: 'vital_0', active: [], fused: false, sk: 0
+    armor: { hp: 0, rp: 0, rm: 0 }, armorItem: 'vital_0', active: [], fused: false, sk: 0, trails: [], inQ: [], qActive: false, ack: 0, qMiss: 0
   };
   loadSave(p, save);
   recalc(p);
@@ -241,7 +244,7 @@ function spawnPlayer(room, p) {
   p.y = W.cy + Math.sin(ang) * nd * W.ry;
   recalc(p);
   p.hp = p.maxHp; p.alive = true; p.protectUntil = room.now + SPAWN_PROTECT;
-  p.stun = 0; p.slowT = 0; p.wt = [0, 0]; p.st = [0, 0];
+  p.stun = 0; p.slowT = 0; p.wt = [0, 0]; p.st = [0, 0]; p.trails = []; p.inQ.length = 0;
   p.aliveT = 0; p.nodT = 0; p.combatT = 0; p.oneHits = 0;
 }
 
@@ -361,17 +364,21 @@ function addXp(room, p, amount) {
   p.xp += amount;
   ev(room, ['d', Math.round(p.x), Math.round(p.y - p.r - 16), amount, 2]);
   let ups = 0;
+  const gain = { str: 0, dex: 0, man: 0, hlt: 0 };
   while (p.level < D.MAX_LEVEL && p.xp >= D.xpNeed(p.level)) {
     p.xp -= D.xpNeed(p.level);
     p.level++;
     ups++;
-    p.points += D.POINTS_PER_LEVEL; // o jogador distribui os pontos (máximo ATTR_MAX por atributo)
+    for (const k of D.ATTRS) { // dados do nível: 1d3 em cada atributo (máximo ATTR_MAX)
+      const g = Math.min(1 + Math.floor(Math.random() * D.LEVEL_DIE), D.ATTR_MAX - p.stats[k]);
+      p.stats[k] += g; gain[k] += g;
+    }
   }
   if (ups) {
     if (p.level >= D.MAX_LEVEL) p.xp = 0;
     recalc(p);
     p.hp = p.maxHp;
-    send(p, { t: 'lvl', level: p.level, ups, pts: ups * D.POINTS_PER_LEVEL });
+    send(p, { t: 'lvl', level: p.level, ups, gain });
     send(p, meMsg(p));
     if (p.level >= D.MAX_LEVEL) {
       feed(room, p.name + ' chegou ao nível ' + D.MAX_LEVEL + ' e ganhou a coroa!');
@@ -459,8 +466,30 @@ function spawnProj(room, p, o) {
     id: room.nid++, owner: p, x: p.x + Math.cos(o.ang) * p.r, y: p.y + Math.sin(o.ang) * p.r,
     vx: Math.cos(o.ang) * o.speed, vy: Math.sin(o.ang) * o.speed, ang: o.ang, dmg: o.dmg, type: o.type,
     r: o.r, life: o.range / o.speed, k: o.k, fam: o.fam, tier: o.tier, aoe: o.aoe || 0,
-    pierce: !!o.pierce, hit: o.pierce ? new Set() : null
+    pierce: !!o.pierce, hit: o.pierce ? new Set() : (o.skip ? new Set([o.skip]) : null),
+    split: !!o.split, home: o.home || null, turn: o.turn || 0, onhit: o.onhit || null, heal: o.heal || 0, splitN: o.splitN || 0, splitMul: o.splitMul || 0
   });
+}
+// Varinha: o tiro explode em 5 estilhaços (72° um do outro) que se curvam para os alvos mais próximos do ponto de impacto
+function splitShards(room, pr, first) {
+  const near = [];
+  eachEnemy(room, pr.owner, (t) => {
+    if (t === first || (t.boss && pr.owner.level < D.BOSS.minLevel)) return;
+    if (t.isPlayer && t.protectUntil > room.now) return;
+    const d = dist(pr.x, pr.y, t.x, t.y);
+    if (d <= D.WAND_SPLIT.seek) near.push({ t, d });
+  });
+  near.sort((a, b) => a.d - b.d);
+  fx(room, 'orbx', pr.x, pr.y, 0, 46, pr.fam, pr.tier);
+  const n = pr.splitN || D.WAND_SPLIT.n, mul = pr.splitMul || D.WAND_SPLIT.mul;
+  for (let i = 0; i < n; i++) {
+    const ang = pr.ang + i * Math.PI * 2 / n + 0.3;
+    room.projs.push({
+      id: room.nid++, owner: pr.owner, x: pr.x, y: pr.y, vx: Math.cos(ang) * D.WAND_SPLIT.speed, vy: Math.sin(ang) * D.WAND_SPLIT.speed,
+      ang, dmg: pr.dmg * mul, type: pr.type, r: 9, life: D.WAND_SPLIT.range / D.WAND_SPLIT.speed, k: 'b', fam: pr.fam, tier: pr.tier, aoe: 0,
+      pierce: false, hit: new Set([first]), split: false, home: near.length ? near[i % near.length].t : null, turn: D.WAND_SPLIT.turn, onhit: null, heal: pr.heal ? pr.heal * 0.66 : 0, splitN: 0, splitMul: 0
+    });
+  }
 }
 
 function inCone(p, t, R, ang, width) {
@@ -537,9 +566,11 @@ function trySkill(room, p, a, mix) {
   switch (S.kind) {
     case 'burst': {
       const R = S.radius * am;
-      fx(room, 's_burst', p.x, p.y, 0, R, fam, tier);
+      // martelo e maça: a pancada cai no chão, no pé do alvo (e pega quem estiver em volta dele); as outras explodem em volta de quem usa
+      const slam = (fam === 'martelo' || fam === 'maca') && trig && trig.e, cx = slam ? trig.e.x : p.x, cy = slam ? trig.e.y : p.y;
+      fx(room, 's_burst', cx, cy, 0, R, fam, tier);
       eachEnemy(room, p, (t) => {
-        if (dist(p.x, p.y, t.x, t.y) - t.r <= R + p.r * 0.5 && hit(room, p, t, dmg, type) && S.stun) stun(t, S.stun);
+        if (dist(cx, cy, t.x, t.y) - t.r <= R + (slam ? 0 : p.r * 0.5) && hit(room, p, t, dmg, type) && S.stun) stun(t, S.stun);
       });
       if (S.heal) {
         const h = Math.round(S.heal * p.maxHp * (fu ? 1.5 : 1));
@@ -574,20 +605,167 @@ function trySkill(room, p, a, mix) {
     }
     case 'bolt':
       spawnProj(room, p, {
-        ang, speed: S.speed, range: S.reach * am, dmg, type, r: S.radius * (fu ? 1.6 : 1), k: 'b', fam, tier, pierce: true
+        ang, speed: S.speed, range: S.reach * am, dmg, type, r: S.radius * (fu ? 1.6 : 1), k: 'b', fam, tier, split: true
       });
       break;
   }
   return true;
 }
 
+// Habilidade (explosão ou cone) a partir de um ponto qualquer, não só de quem usa: serve para as misturas especiais.
+function skillAt(room, p, it, S, ox, oy, ang, dmg, scale) {
+  const type = D.FAMILIES[it.fam].type, k = scale || 1; let n = 0;
+  if (S.kind === 'burst') {
+    fx(room, 's_burst', ox, oy, 0, S.radius * k, it.fam, it.tier);
+    eachEnemy(room, p, (t) => { if (dist(ox, oy, t.x, t.y) - t.r <= S.radius * k && hit(room, p, t, dmg, type)) { n++; if (S.stun) stun(t, S.stun); } });
+  } else if (S.kind === 'cone') {
+    fx(room, 's_cone', ox, oy, ang, S.range * k, it.fam, it.tier, +S.angle.toFixed(2));
+    eachEnemy(room, p, (t) => { if (inCone({ x: ox, y: oy, r: 0 }, t, S.range * k, ang, S.angle) && hit(room, p, t, dmg, type)) n++; });
+  }
+  return n;
+}
+function healOwner(room, p, frac) {
+  if (!p.alive || p.gone || p.hp >= p.maxHp) return;
+  const h = Math.round(frac * p.maxHp); p.hp = Math.min(p.maxHp, p.hp + h);
+  ev(room, ['d', Math.round(p.x), Math.round(p.y - p.r), h, 3]);
+}
+const later = (room, sec, fn) => room.later.push({ t: sec, fn });
+// Estilhaço teleguiado (varinha) a partir de um ponto
+function pushShard(room, owner, x, y, ang, o) {
+  room.projs.push({
+    id: room.nid++, owner, x, y, vx: Math.cos(ang) * o.speed, vy: Math.sin(ang) * o.speed, ang, dmg: o.dmg, type: o.type, r: 9, life: o.range / o.speed,
+    k: 'b', fam: o.fam, tier: o.tier, aoe: 0, pierce: false, hit: null, split: false, home: o.home || null, turn: o.turn || 10, onhit: null, heal: 0, splitN: 0, splitMul: 0
+  });
+}
+const mixAnim = (room, p, a, ang) => ev(room, ['a', Math.round(p.x), Math.round(p.y), p.id, a.slot, +ang.toFixed(2), 1]);
+const skillDmg = (a, p) => Math.round(D.skillDamage(a.item, p.stats) * D.MIX_DMG);
+
+// ---- Misturas com comportamento próprio: cada arma tem um PAPEL e cada par de papéis tem uma combinação ----
+// arrow (arco): tiro/flechas · bolt (varinha): tiro que se espalha · slam (martelo, maça, cajado): pancada no pé do alvo
+// slash (espada, chicote): corte em cone · dash (rapieira): investida · aura (sinos): cura
+const ROLE = { arco: 'arrow', varinha: 'bolt', martelo: 'slam', maca: 'slam', cajado: 'slam', espada: 'slash', chicote: 'slash', rapieira: 'dash', sinos: 'aura' };
+const byRole = (pair, r) => pair.find((a) => ROLE[a.item.fam] === r);
+const reachOf = (a) => { const S = a.F.skill; return S.reach || S.range || S.radius || S.dist || 100; };
+const mixTarget = (room, p, pair, ignoreAim) => findTarget(room, p, Math.max(...pair.map(reachOf)), ignoreAim);
+const startMix = (room, p, pair, tg) => { p.face = tg.ang; pair.forEach((a) => mixAnim(room, p, a, tg.ang)); };
+const LEECH = 0.05; // sinos + pancada/corte: cura por inimigo atingido (até 3)
+// carrega a habilidade da outra arma até o ponto do impacto (pancada cai no pé do alvo, corte sai do ponto da flecha)
+const payload = (p, o) => (room, pr, e) => { const slam = ROLE[o.item.fam] === 'slam'; skillAt(room, p, o.item, o.F.skill, slam ? e.x : pr.x, slam ? e.y : pr.y, pr.ang, skillDmg(o, p)); };
+const arrowShot = (room, p, bow, tg, extra) => spawnProj(room, p, Object.assign({ ang: tg.ang, speed: 700, range: reachOf(bow), dmg: skillDmg(bow, p), type: bow.F.type, r: 9, k: 'v', fam: 'arco', tier: bow.item.tier }, extra));
+const wandBolt = (room, p, w, tg, extra) => spawnProj(room, p, Object.assign({ ang: tg.ang, speed: w.F.skill.speed, range: w.F.skill.reach, dmg: skillDmg(w, p), type: w.F.type, r: w.F.skill.radius, k: 'b', fam: 'varinha', tier: w.item.tier, split: true }, extra));
+const MIX_SPECIAL = {
+  // flecha única que, ao acertar, solta o corte/pancada da outra arma no impacto
+  'arrow+slash': (room, p, pair) => { const bow = byRole(pair, 'arrow'), o = pair.find((a) => a !== bow), tg = mixTarget(room, p, pair, false); if (!tg) return false; startMix(room, p, pair, tg); arrowShot(room, p, bow, tg, { onhit: payload(p, o) }); return true; },
+  'arrow+slam': (room, p, pair) => MIX_SPECIAL['arrow+slash'](room, p, pair),
+  // flechas mágicas: 3 flechas e cada uma estoura em 3 estilhaços teleguiados
+  'arrow+bolt': (room, p, pair) => { const bow = byRole(pair, 'arrow'), tg = mixTarget(room, p, pair, false); if (!tg) return false; startMix(room, p, pair, tg); for (let k = -1; k <= 1; k++) arrowShot(room, p, bow, { ang: tg.ang + k * 0.22 }, { split: true, splitN: 3, splitMul: 0.5 }); return true; },
+  // flechas que curam quem atira
+  'arrow+aura': (room, p, pair) => { const bow = byRole(pair, 'arrow'), tg = mixTarget(room, p, pair, false); if (!tg) return false; startMix(room, p, pair, tg); for (let k = -1; k <= 1; k++) arrowShot(room, p, bow, { ang: tg.ang + k * 0.22 }, { heal: 0.03 }); return true; },
+  // investida e, no fim dela, o tiro sai do ponto onde parou
+  'arrow+dash': (room, p, pair) => { const tg = mixTarget(room, p, pair, false); if (!tg) return false; const d = byRole(pair, 'dash'), o = pair.find((a) => a !== d); if (!trySkill(room, p, d, true)) return false; trySkill(room, p, o, true); return true; },
+  'bolt+dash': (room, p, pair) => MIX_SPECIAL['arrow+dash'](room, p, pair),
+  // tiro da varinha que, além de se espalhar, solta o corte da outra arma no impacto
+  'bolt+slash': (room, p, pair) => { const w = byRole(pair, 'bolt'), o = pair.find((a) => a !== w), tg = mixTarget(room, p, pair, false); if (!tg) return false; startMix(room, p, pair, tg); wandBolt(room, p, w, tg, { onhit: payload(p, o) }); return true; },
+  // tiro da varinha que se espalha em estilhaços que curam
+  'aura+bolt': (room, p, pair) => { const w = byRole(pair, 'bolt'), tg = mixTarget(room, p, pair, false); if (!tg) return false; startMix(room, p, pair, tg); wandBolt(room, p, w, tg, { heal: 0.03 }); return true; },
+  // pancada no pé do alvo e, de dentro dela, 5 tiros da varinha que acham os alvos da região
+  'bolt+slam': (room, p, pair) => {
+    const ha = byRole(pair, 'slam'), wa = byRole(pair, 'bolt'), R = ha.F.skill.radius, tg = findTarget(room, p, R, true); if (!tg || !tg.e) return false;
+    const cx = tg.e.x, cy = tg.e.y; startMix(room, p, pair, tg);
+    skillAt(room, p, ha.item, ha.F.skill, cx, cy, tg.ang, skillDmg(ha, p));
+    const inside = [];
+    eachEnemy(room, p, (t) => { if (dist(cx, cy, t.x, t.y) - t.r <= R && !(t.boss && p.level < D.BOSS.minLevel)) inside.push(t); });
+    inside.sort((a, b) => dist(cx, cy, a.x, a.y) - dist(cx, cy, b.x, b.y));
+    const n = D.WAND_SPLIT.n;
+    for (let i = 0; i < n; i++) {
+      const a0 = Math.random() * Math.PI * 2, rr = Math.random() * R * 0.45, sx = cx + Math.cos(a0) * rr, sy = cy + Math.sin(a0) * rr;
+      const home = inside.length ? inside[i % inside.length] : null, ang = home ? Math.atan2(home.y - sy, home.x - sx) : i * Math.PI * 2 / n;
+      pushShard(room, p, sx, sy, ang, { speed: 560, range: R + 60, dmg: skillDmg(wa, p) * 0.8, type: wa.F.type, fam: 'varinha', tier: wa.item.tier, home, turn: 14 });
+      fx(room, 'orbx', sx, sy, 0, 22, 'varinha', wa.item.tier);
+    }
+    return true;
+  },
+  // duas pancadas: a segunda vem logo depois, maior e um pouco mais fraca (terremoto)
+  'slam+slam': (room, p, pair) => {
+    const big = pair.slice().sort((x, y) => y.F.skill.radius - x.F.skill.radius), tg = findTarget(room, p, big[0].F.skill.radius, true); if (!tg || !tg.e) return false;
+    const cx = tg.e.x, cy = tg.e.y; startMix(room, p, pair, tg);
+    skillAt(room, p, big[1].item, big[1].F.skill, cx, cy, tg.ang, skillDmg(big[1], p));
+    later(room, 0.35, () => { if (p.alive && !p.gone) skillAt(room, p, big[0].item, big[0].F.skill, cx, cy, tg.ang, Math.round(skillDmg(big[0], p) * 0.8), 1.35); });
+    return true;
+  },
+  // pancada e, logo depois, onda de corte saindo do ponto da pancada na direção do golpe
+  'slam+slash': (room, p, pair) => {
+    const ha = byRole(pair, 'slam'), sa = byRole(pair, 'slash'), tg = mixTarget(room, p, pair, true); if (!tg || !tg.e) return false;
+    const cx = tg.e.x, cy = tg.e.y; startMix(room, p, pair, tg);
+    skillAt(room, p, ha.item, ha.F.skill, cx, cy, tg.ang, skillDmg(ha, p));
+    later(room, 0.2, () => { if (p.alive && !p.gone) skillAt(room, p, sa.item, sa.F.skill, cx, cy, tg.ang, skillDmg(sa, p)); });
+    return true;
+  },
+  // investida e, onde ela termina, a pancada
+  'dash+slam': (room, p, pair) => {
+    const d = byRole(pair, 'dash'), ha = byRole(pair, 'slam'), tg = mixTarget(room, p, pair, false); if (!tg || !tg.e) return false;
+    const e = tg.e; if (!trySkill(room, p, d, true)) return false;
+    skillAt(room, p, ha.item, ha.F.skill, e.alive ? e.x : p.x, e.alive ? e.y : p.y, tg.ang, skillDmg(ha, p));
+    return true;
+  },
+  // investida e, onde ela termina, o corte
+  'dash+slash': (room, p, pair) => {
+    const d = byRole(pair, 'dash'), sa = byRole(pair, 'slash'), tg = mixTarget(room, p, pair, false); if (!tg) return false;
+    if (!trySkill(room, p, d, true)) return false;
+    skillAt(room, p, sa.item, sa.F.skill, p.x, p.y, tg.ang, skillDmg(sa, p));
+    return true;
+  },
+  // pancada que rouba vida: cura por inimigo atingido
+  'aura+slam': (room, p, pair) => {
+    const ha = byRole(pair, 'slam'), tg = mixTarget(room, p, pair, true); if (!tg || !tg.e) return false;
+    startMix(room, p, pair, tg);
+    const n = skillAt(room, p, ha.item, ha.F.skill, tg.e.x, tg.e.y, tg.ang, skillDmg(ha, p));
+    healOwner(room, p, LEECH * Math.min(3, n)); return true;
+  },
+  // corte que rouba vida
+  'aura+slash': (room, p, pair) => {
+    const sa = byRole(pair, 'slash'), tg = mixTarget(room, p, pair, false); if (!tg) return false;
+    startMix(room, p, pair, tg);
+    const n = skillAt(room, p, sa.item, sa.F.skill, p.x, p.y, tg.ang, skillDmg(sa, p));
+    healOwner(room, p, LEECH * Math.min(3, n)); return true;
+  },
+  // corte em X: dois cortes cruzados, o segundo um instante depois
+  'slash+slash': (room, p, pair) => {
+    const tg = mixTarget(room, p, pair, false); if (!tg) return false; startMix(room, p, pair, tg);
+    skillAt(room, p, pair[0].item, pair[0].F.skill, p.x, p.y, tg.ang + 0.4, skillDmg(pair[0], p));
+    later(room, 0.2, () => { if (p.alive && !p.gone) skillAt(room, p, pair[1].item, pair[1].F.skill, p.x, p.y, tg.ang - 0.4, skillDmg(pair[1], p)); });
+    return true;
+  },
+  // investida da rapieira que deixa no chão um rastro de cura por 2 s
+  'aura+dash': (room, p, pair) => {
+    const da = byRole(pair, 'dash'), ba = byRole(pair, 'aura');
+    const tg = findTarget(room, p, da.F.skill.dist, false); if (!tg) return false;
+    const x0 = p.x, y0 = p.y;
+    if (!trySkill(room, p, da, true)) return false;
+    mixAnim(room, p, ba, tg.ang);
+    const heal = (ba.F.skill.heal || 0.18) * p.maxHp * (p.fused ? 1.5 : 1);
+    p.trails.push({ x0, y0, x1: p.x, y1: p.y, t: D.TRAIL_HEAL.time, rate: heal / D.TRAIL_HEAL.time });
+    fx(room, 'healtrail', x0, y0, tg.ang, Math.round(dist(x0, y0, p.x, p.y)), 'sinos', ba.item.tier, [Math.round(p.x), Math.round(p.y)]);
+    return true;
+  }
+};
+const mixKey = (pair) => pair.map((a) => ROLE[a.item.fam]).sort().join('+');
+
 // Habilidade mista: as duas habilidades saem juntas e dividem uma recarga (guardada nos dois slots).
 function trySkillMix(room, p) {
   if (p.st[0] > 0 || p.st[1] > 0) return;
   const pair = p.active.slice().sort((x, y) => (x.F.skill.kind === 'dash') - (y.F.skill.kind === 'dash')); // a investida por último
   let any = false;
+  const spec = MIX_SPECIAL[mixKey(pair)];
+  if (spec) any = spec(room, p, pair);
+  if (any) { p.st[0] = p.st[1] = p.mixCd; return; }
+  if (spec) any = false; // sem alvo para a mistura especial: volta ao normal (por exemplo, o sino ainda cura sozinho quando está machucado)
   for (const a of pair) if (trySkill(room, p, a, true)) any = true;
-  if (any) { p.st[0] = p.st[1] = p.mixCd; }
+  if (any) {
+    p.st[0] = p.st[1] = p.mixCd;
+    const ia = pair[0].item, ib = pair[1].item; // animação própria da combinação (as duas cores e um desenho que depende do par)
+    fx(room, 'mixfx', p.x, p.y, p.face, 210, ia.fam, Math.max(ia.tier, ib.tier), ib.fam);
+  }
 }
 
 function explode(room, pr) {
@@ -598,6 +776,13 @@ function explode(room, pr) {
 function updateProjs(room) {
   for (let i = room.projs.length - 1; i >= 0; i--) {
     const pr = room.projs[i];
+    if (pr.home) { // estilhaço teleguiado: curva em direção ao alvo, se ele ainda estiver vivo
+      if (!pr.home.alive || pr.home.gone) pr.home = null;
+      else {
+        const want = Math.atan2(pr.home.y - pr.y, pr.home.x - pr.x), df = angDiff(want, pr.ang), step = Math.max(-pr.turn * DT, Math.min(pr.turn * DT, df)), sp = Math.hypot(pr.vx, pr.vy);
+        pr.ang += step; pr.vx = Math.cos(pr.ang) * sp; pr.vy = Math.sin(pr.ang) * sp;
+      }
+    }
     pr.x += pr.vx * DT; pr.y += pr.vy * DT; pr.life -= DT;
     let remove = false;
     const test = (e) => {
@@ -607,6 +792,10 @@ function updateProjs(room) {
       if (dist(pr.x, pr.y, e.x, e.y) > e.r + pr.r) return;
       if (pr.k === 'o') { explode(room, pr); remove = true; return; }
       hit(room, pr.owner, e, pr.dmg, pr.type);
+      if (pr.heal) healOwner(room, pr.owner, pr.heal);
+      if (pr.onhit) pr.onhit(room, pr, e); // projétil misto: ao acertar, solta a habilidade da outra arma
+      if (pr.split) { splitShards(room, pr, e); remove = true; return; }
+      if (pr.onhit) { remove = true; return; }
       if (pr.pierce) pr.hit.add(e); else remove = true;
     };
     for (const m of room.mobs) test(m);
@@ -623,11 +812,32 @@ function updatePlayer(room, p) {
   p.aliveT += DT;
   if (p.combatT > 0) { p.combatT -= DT; p.nodT += DT; } // "sem tomar dano" só conta enquanto você está lutando
   if (p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * D.PLAYER_REGEN * DT); // regenera sempre, inclusive em luta
+  if (p.trails && p.trails.length) { // rastro de cura (rapieira + sinos): cura quem fez enquanto estiver em cima
+    for (let i = p.trails.length - 1; i >= 0; i--) {
+      const tr = p.trails[i]; tr.t -= DT;
+      if (tr.t <= 0) { p.trails.splice(i, 1); continue; }
+      if (p.hp < p.maxHp && segHit(tr.x0, tr.y0, tr.x1, tr.y1, p.x, p.y).d <= D.TRAIL_HEAL.width + p.r) p.hp = Math.min(p.maxHp, p.hp + tr.rate * DT);
+    }
+  }
   if (p.stun > 0) p.stun -= DT;
   if (p.slowT > 0) p.slowT -= DT;
   for (let i = 0; i < 2; i++) { if (p.wt[i] > 0) p.wt[i] -= DT; if (p.st[i] > 0) p.st[i] -= DT; }
+  // comandos de movimento do cliente: um por passo; se acumular (rede em rajada), consome um a mais para alcançar
+  let reps = 1;
+  if (p.qActive) {
+    reps = p.inQ.length > 2 ? 2 : 1;
+    for (let r = 0; r < reps; r++) {
+      const c = p.inQ.shift();
+      if (c) { p.mx = c.x; p.my = c.y; p.ack = c.s; p.qMiss = 0; }
+      else { if (++p.qMiss > 6) { p.mx = 0; p.my = 0; } continue; } // fila vazia: espera o comando chegar (nunca anda sem comando, senão o servidor passa na frente do cliente)
+      if (p.stun <= 0 && (p.mx || p.my)) { // anda neste passo (o resto da atualização só roda depois do atordoamento)
+        const sp = (p.spd || BASE_SPEED) * (p.slowT > 0 ? 0.6 : 1);
+        p.x += p.mx * sp * DT; p.y += p.my * sp * DT; clampWorld(p); p.face = Math.atan2(p.my, p.mx);
+      }
+    }
+  }
   if (p.stun > 0) return;
-  if (p.mx || p.my) {
+  if (!p.qActive && (p.mx || p.my)) {
     const sp = (p.spd || BASE_SPEED) * (p.slowT > 0 ? 0.6 : 1);
     p.x += p.mx * sp * DT; p.y += p.my * sp * DT;
     clampWorld(p);
@@ -661,14 +871,14 @@ function stepToward(e, tx, ty, speed) {
 function mobStartCast(room, m, tg) {
   const S = m.def.sp, ang = Math.atan2(tg.y - m.y, tg.x - m.x);
   m.spCd = S.cd; m.face = ang;
-  const c = { t: S.wind, ang, x: tg.x, y: tg.y };
+  const c = { t: S.wind, ang, x: tg.x, y: tg.y, sx: m.x, sy: m.y };
   m.cast = c;
   if (S.shape === 'self') ev(room, ['w', Math.round(m.x), Math.round(m.y), 1, 0, S.radius, +S.wind.toFixed(2), 0]);
   else if (S.shape === 'leap' || S.shape === 'ground') ev(room, ['w', Math.round(c.x), Math.round(c.y), 1, 0, S.radius, +S.wind.toFixed(2), 0]);
   else ev(room, ['w', Math.round(m.x), Math.round(m.y), 0, +ang.toFixed(2), S.range, +S.wind.toFixed(2), S.width]);
 }
 // distância de um ponto a um segmento (para o tiro de teia, que viaja em linha reta e acerta o primeiro que estiver no caminho)
-function segDist(x0, y0, x1, y1, px, py) {
+function segHit(x0, y0, x1, y1, px, py) {
   const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / l2));
   return { d: Math.hypot(px - (x0 + dx * u), py - (y0 + dy * u)), u };
 }
@@ -677,7 +887,15 @@ function mobResolveCast(room, m) {
   m.cast = null; m.atkT = 0.6;
   const dmg = () => m.def.dmg * S.mul * rnd(0.95, 1.05);
   const after = (p) => { if (S.stun) stun(p, S.stun); if (S.slow) p.slowT = Math.max(p.slowT || 0, S.slow); };
-  const area = (x, y, R) => room.players.forEach((p) => { if (p.alive && dist(x, y, p.x, p.y) - p.r <= R && hit(room, m, p, dmg(), 'phys')) after(p); });
+  // Área com núcleo (se a habilidade tem `core`): dentro do núcleo é o dano todo e o atordoamento; na borda externa é metade do dano, sem atordoar.
+  // A distância conta do centro do jogador, então a área desenhada no chão é exatamente a área que machuca.
+  const area = (x, y, R) => room.players.forEach((p) => {
+    if (!p.alive) return;
+    const d = dist(x, y, p.x, p.y), lim = S.core ? R : R + p.r * 0.5;
+    if (d > lim) return;
+    const edge = S.core && d > R * S.core;
+    if (hit(room, m, p, dmg() * (edge ? 0.5 : 1), 'phys') && !edge) after(p); else if (edge && p.alive && S.slow) after(p);
+  });
   if (S.shape === 'self') { fx(room, 'ms', m.x, m.y, 0, S.radius, key, 1); area(m.x, m.y, S.radius); }
   else if (S.shape === 'leap' || S.shape === 'ground') {
     if (S.shape === 'leap') { m.x = c.x; m.y = c.y; clampWorld(m); }
@@ -685,7 +903,7 @@ function mobResolveCast(room, m) {
   } else if (S.shape === 'shot') {
     const x1 = m.x + Math.cos(c.ang) * S.range, y1 = m.y + Math.sin(c.ang) * S.range;
     let best = null, bu = 2;
-    room.players.forEach((p) => { if (!p.alive || p.protectUntil > room.now) return; const q = segDist(m.x, m.y, x1, y1, p.x, p.y); if (q.d <= S.hitR + p.r && q.u < bu) { bu = q.u; best = p; } });
+    room.players.forEach((p) => { if (!p.alive || p.protectUntil > room.now) return; const q = segHit(m.x, m.y, x1, y1, p.x, p.y); if (q.d <= S.hitR + p.r && q.u < bu) { bu = q.u; best = p; } });
     fx(room, 'ms', m.x, m.y, c.ang, best ? S.range * bu : S.range, key, 1, best ? 1 : 0);
     if (best && hit(room, m, best, dmg(), 'phys')) after(best);
   } else if (S.shape === 'cone') {
@@ -707,7 +925,7 @@ function updateMob(room, m) {
   }
   if (m.boss) return updateBoss(room, m);
   if (m.atkT > 0) m.atkT -= DT;
-  if (m.stun > 0) { m.stun -= DT; m.cast = null; return; }
+  if (m.stun > 0) { m.stun -= DT; m.cast = null; m.jmp = 0; return; }
   const def = m.def;
   let tg = m.tgt;
   if (tg && (!tg.alive || tg.gone)) tg = null;
@@ -731,7 +949,16 @@ function updateMob(room, m) {
   }
   if (m.cast) { // preparando o ataque especial: fica parado até o aviso acabar
     m.cast.t -= DT;
-    if (m.cast.t <= 0) mobResolveCast(room, m);
+    const cs = m.cast, SP = def.sp;
+    if (SP && SP.shape === 'leap' && cs.t > 0) { // agacha e depois salta de verdade até o ponto marcado (no último 0,45 s do aviso)
+      const AIR = Math.min(0.45, SP.wind * 0.65);
+      if (cs.t < AIR) {
+        const u = 1 - cs.t / AIR, e = u * u * (3 - 2 * u);
+        m.x = cs.sx + (cs.x - cs.sx) * e; m.y = cs.sy + (cs.y - cs.sy) * e; clampWorld(m);
+        m.jmp = Math.max(0.02, u);
+      } else m.jmp = -Math.min(1, (SP.wind - cs.t) / Math.max(0.05, SP.wind - AIR));
+    }
+    if (cs.t <= 0) { m.jmp = 0; mobResolveCast(room, m); }
     return;
   }
   if (tg) {
@@ -939,7 +1166,7 @@ function sendSnapshots(room) {
     if (!p.alive) return;
     pl.push({
       i: p.id, x: Math.round(p.x), y: Math.round(p.y), h: Math.round(p.hp), m: p.maxHp, l: p.level,
-      a: +p.face.toFixed(2), r: Math.round(p.r), w: p.active.map((a) => a.item.id), ar: p.armorItem,
+      a: +p.face.toFixed(2), r: Math.round(p.r), w: p.active.map((a) => a.item.id), ar: p.armorItem, q: p.ack, v: Math.round((p.spd || BASE_SPEED) * 10),
       f: (p.protectUntil > room.now ? 1 : 0) | (p.stun > 0 ? 2 : 0) | (p.fused ? 4 : 0) | (p.level >= D.MAX_LEVEL ? 8 : 0) | (p.slowT > 0 ? 16 : 0) | (p.level <= D.NEWBIE_LEVEL ? 32 : 0)
     });
     if (p.sk) pl[pl.length - 1].k = p.sk; // skin equipada (campo no fim: clientes antigos ignoram)
@@ -955,7 +1182,7 @@ function sendSnapshots(room) {
       if (m.boss) { // 2 = dormindo, 4 = sopro armado, 8 = pancada armada, 16 = enfurecido
         row[6] = (m.state === 0 ? 2 : 0) | (m.cast ? (m.cast.kind === 0 ? 4 : 8) : 0) | (m.hp < m.maxHp * D.BOSS.rage ? 16 : 0);
         row.push(+m.face.toFixed(2));
-      }
+      } else if (m.jmp) row.push(+m.jmp.toFixed(2)); // coelho: <0 agachando, >0 no ar (0..1)
       mb.push(row);
     }
     for (const pr of room.projs) {
@@ -981,6 +1208,7 @@ function updateRoom(room) {
   room.now += DT; room.t++;
   room.players.forEach((p) => updatePlayer(room, p));
   updateProjs(room);
+  if (room.later.length) for (let i = room.later.length - 1; i >= 0; i--) { const l = room.later[i]; l.t -= DT; if (l.t <= 0) { room.later.splice(i, 1); try { l.fn(); } catch (e) { /* jogador saiu */ } } } // ações atrasadas das misturas
   for (const m of room.mobs) updateMob(room, m);
   separateMobs(room);
   if (room.quiet) room.ev.length = 0; // simulador: ninguém olhando, não monta pacotes
@@ -1079,8 +1307,13 @@ function onMessage(ws, raw) {
       let mx = Number(m.mx) || 0, my = Number(m.my) || 0;
       const l = Math.hypot(mx, my);
       if (l > 1) { mx /= l; my /= l; }
-      p.mx = mx; p.my = my; p.am = !!m.am;
+      p.am = !!m.am;
       if (typeof m.a === 'number' && isFinite(m.a)) p.aim = m.a;
+      if (typeof m.s === 'number' && isFinite(m.s)) { // cliente novo: um comando de movimento por passo (30/s), numerado; o servidor devolve o último que usou
+        p.qActive = true;
+        if (p.inQ.length >= 8) p.inQ.shift();
+        p.inQ.push({ s: m.s | 0, x: mx, y: my });
+      } else if (!p.qActive) { p.mx = mx; p.my = my; } // cliente antigo / robôs do simulador
       break;
     }
     case 'equip': {
@@ -1167,4 +1400,4 @@ if (!SIM) {
 }
 
 // exportados para test/sim.js e para o simulador (tools/simular.js)
-module.exports = { server, wss, rooms, online, getAccounts: () => accounts, getRanking: () => ranking, fmtDur, recalc, addXp, newRoom, makePlayer, spawnPlayer, updateRoom, hit, giveRandom, checkQuests, DT, TICK, BASE_SPEED };
+module.exports = { server, wss, rooms, online, getAccounts: () => accounts, getRanking: () => ranking, fmtDur, recalc, addXp, fx, ev, newRoom, makePlayer, spawnPlayer, updateRoom, hit, giveRandom, checkQuests, DT, TICK, BASE_SPEED };

@@ -22,7 +22,7 @@
   };
   var cfg = { name: store.get('slimeio_name', ''), color: store.get('slimeio_color', PALETTE[0]), aim: store.get('slimeio_aim', 'near') };
   var canvas = $('game'), ctx = canvas.getContext('2d');
-  var dpr = 1, vw = 0, vh = 0, zoom = 1;
+  var dpr = 1, vw = 0, vh = 0, zoom = 1, dprCap = 0, PMAX = 700, qLevel = 0, qAcc = 0, qN = 0; // qualidade adaptativa: se o aparelho engasga, diminui a resolução e as partículas
   var cam = { x: W.cx, y: W.cy }, shake = 0;
   var T = 0;
   var fxs = [], floats = [], parts = [], flies = [], teles = [];
@@ -194,7 +194,7 @@
       seen[p.i] = 1;
       e = S.players.get(p.i);
       if (!e) { e = { id: p.i, rx: p.x, ry: p.y, rr: p.r }; S.players.set(p.i, e); }
-      e.x = p.x; e.y = p.y; e.h = p.h; e.m = p.m; e.l = p.l; e.a = p.a; e.r = p.r; e.w = p.w; e.ar = p.ar; e.f = p.f;
+      e.x = p.x; e.y = p.y; e.h = p.h; e.m = p.m; e.l = p.l; e.a = p.a; e.r = p.r; e.w = p.w; e.ar = p.ar; e.f = p.f; e.sv = p.v ? p.v / 10 : 0; e.q = p.q;
       if (S.roster[p.i]) { S.roster[p.i].r = p.r; S.roster[p.i].sk = p.k || 0; }
     }
     S.players.forEach(function (v, id) { if (!seen[id]) S.players.delete(id); });
@@ -203,8 +203,8 @@
     S.alive = !!mine;
     if (mine) {
       S.myF = mine.f;
-      if (!S.pos || !wasAlive) { S.pos = { x: mine.x, y: mine.y }; cam.x = mine.x; cam.y = mine.y; A.warmMap(mine.x, mine.y); }
-      S.srv = { x: mine.x, y: mine.y };
+      if (!S.pos || !wasAlive) { pend.length = 0; corr.x = corr.y = 0; lp = null; S.pos = { x: mine.x, y: mine.y }; cam.x = mine.x; cam.y = mine.y; A.warmMap(mine.x, mine.y); }
+      reconcile(mine);
       if (S.dead) { S.dead = false; $('deathOverlay').hidden = true; }
     }
     var seenM = {};
@@ -214,7 +214,7 @@
       e = S.mobs.get(b[0]);
       if (!e) { e = { id: b[0], rx: b[2], ry: b[3], flip: false, flash: 0, hp: b[4] }; S.mobs.set(b[0], e); }
       if (b[4] < e.hp) e.flash = 0.12;
-      e.hp = b[4]; e.x = b[2]; e.y = b[3]; e.ki = b[1]; e.mhp = b[5]; e.st = b[6]; if (b.length > 7) e.face = b[7];
+      e.hp = b[4]; e.x = b[2]; e.y = b[3]; e.ki = b[1]; e.mhp = b[5]; e.st = b[6]; if (b.length > 7) { if (MOBDEF[MOB_KEYS[b[1]]].boss) e.face = b[7]; else e.jmp = b[7]; } else e.jmp = 0;
     }
     goneMobs = [];
     S.mobs.forEach(function (v, id) { if (!seenM[id]) { goneMobs.push(v); S.mobs.delete(id); } });
@@ -267,7 +267,7 @@
         pushFloat({ x: e[1], y: e[2], v: e[3], f: kind, age: 0, big: big, dx: (Math.random() - 0.5) * 22 });
         if (kind === 0 || kind === 1) {
           var col = kind === 1 ? pcolor(e[5]) : (tgt ? A.mobColor(MOB_KEYS[tgt.ki]) : '#ffd36b');
-          if (parts.length < 700) FX.hitSparks(parts, e[1], e[2], big, ang, col, kind === 1);
+          if (parts.length < PMAX) FX.hitSparks(parts, e[1], e[2], big, ang, col, kind === 1);
           if (fxs.length < 160) fxs.push({ x: e[1], y: e[2], kind: 'hit', a: ang === null ? Math.random() * TAU : ang, size: 14 + Math.min(26, e[3] / 6), fam: 'faca', tier: 1, extra: col, age: 0 });
           if (tgt) {
             if (kind === 1) { tgt.hurtT = 0; tgt.hurtA = ang === null ? 0 : ang; tgt.hurtBig = big; }
@@ -321,7 +321,7 @@
         var mcol = A.mobColor(mkey), best = null, bd = 90;
         goneMobs.forEach(function (gm) { var d = Math.hypot(gm.rx - e[1], gm.ry - e[2]); if (gm.ki === e[3] && d < bd) { bd = d; best = gm; } });
         corpses.push({ ki: e[3], x: best ? best.rx : e[1], y: best ? best.ry : e[2], flip: best ? !!best.flip : false, face: best ? best.face : undefined, age: 0, dur: mdef.boss ? 2.6 : 0.42, boss: !!mdef.boss });
-        for (i = 0; i < 14 && parts.length < 700; i++) {
+        for (i = 0; i < 14 && parts.length < PMAX; i++) {
           var a = Math.random() * TAU, sp = 40 + Math.random() * 130;
           parts.push({ x: e[1], y: e[2], vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, life: 0.5 + Math.random() * 0.4, max: 0.9, c: mcol, sz: 3 + Math.random() * 4 });
         }
@@ -389,6 +389,7 @@
   var zone = $('stickZone'), base = $('stickBase'), knob = $('stickKnob');
   zone.addEventListener('pointerdown', function (e) {
     if (stick.on) return;
+    var sh = $('stickHint'); if (sh) sh.classList.add('gone');
     stick.on = true; stick.id = e.pointerId; stick.ox = e.clientX; stick.oy = e.clientY; stick.x = 0; stick.y = 0;
     var r = zone.getBoundingClientRect();
     base.style.display = 'block'; base.style.left = (e.clientX - r.left) + 'px'; base.style.top = (e.clientY - r.top) + 'px';
@@ -397,8 +398,12 @@
   });
   zone.addEventListener('pointermove', function (e) {
     if (!stick.on || e.pointerId !== stick.id) return;
-    var dx = e.clientX - stick.ox, dy = e.clientY - stick.oy, l = Math.hypot(dx, dy), R = 52;
-    if (l > R) { dx = dx / l * R; dy = dy / l * R; }
+    var dx = e.clientX - stick.ox, dy = e.clientY - stick.oy, l = Math.hypot(dx, dy), R = 56;
+    if (l > R) { // analógico flexível: se o dedo passar do limite, a base acompanha o dedo
+      var ex = dx / l * (l - R), ey = dy / l * (l - R);
+      stick.ox += ex; stick.oy += ey; dx = dx / l * R; dy = dy / l * R;
+      var rr = zone.getBoundingClientRect(); base.style.left = (stick.ox - rr.left) + 'px'; base.style.top = (stick.oy - rr.top) + 'px';
+    }
     stick.x = dx / R; stick.y = dy / R;
     knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
   });
@@ -413,7 +418,8 @@
   var lastSent = { mx: 9, my: 9, am: -1, a: 9, t: 0 };
   setInterval(function () {
     if (!S.joined) return;
-    var v = S.alive ? inputVec() : { x: 0, y: 0 };
+    if (S.alive) return; // vivo: o passo de 30/s em update() já manda o movimento e a mira
+    var v = { x: 0, y: 0 };
     var am = cfg.aim === 'cursor' ? 1 : 0, a = 0;
     if (am) {
       if (document.body.classList.contains('touch') && !mouse.has) a = Math.atan2(lastDir.y, lastDir.x);
@@ -458,7 +464,7 @@
   function renderAttrs() {
     var m = S.me; if (!m) return;
     var pts = m.pts || 0, MAX = GD.ATTR_MAX;
-    $('attrHint').innerHTML = pts > 0 ? 'Você tem <b>' + pts + '</b> ponto' + (pts > 1 ? 's' : '') + ' para distribuir. Cada nível dá ' + GD.POINTS_PER_LEVEL + ', e o máximo é ' + MAX + ' em cada atributo. Ao morrer, tudo volta ao começo.' : 'Sem pontos agora. Cada nível dá ' + GD.POINTS_PER_LEVEL + ' pontos, e o máximo é ' + MAX + ' em cada atributo. Ao morrer, tudo volta ao começo.';
+    $('attrHint').innerHTML = (pts > 0 ? 'Você ainda tem <b>' + pts + '</b> ponto' + (pts > 1 ? 's' : '') + ' guardado' + (pts > 1 ? 's' : '') + ' para distribuir. ' : '') + 'A cada nível o dado rola <b>1d3</b> em cada atributo (média de 2). O máximo é ' + MAX + ' em cada um. Ao morrer, tudo volta ao começo.';
     $('attrList').innerHTML = GD.ATTRS.map(function (k) {
       var v = m.stats[k], room = Math.min(pts, MAX - v), off = room < 1 ? ' disabled' : '';
       return '<li><div class="ar-top"><b>' + ATTR_SHORT[k] + '</b><span>' + v + ' / ' + MAX + '</span></div><div class="ar-bar"><i style="width:' + (v / MAX * 100) + '%"></i></div><small class="muted">' + ATTR_DESC[k] + '</small>' +
@@ -764,10 +770,10 @@
   function queueLevel(m) {
     if (S.pos) {
       fxs.push({ x: S.pos.x, y: S.pos.y, kind: 'lvl', a: 0, size: 78, fam: 'faca', tier: 1, extra: 0, age: 0 });
-      for (var q = 0; q < 22 && parts.length < 700; q++) { var qa = Math.random() * TAU, qs = 50 + Math.random() * 150; parts.push({ x: S.pos.x, y: S.pos.y, vx: Math.cos(qa) * qs, vy: Math.sin(qa) * qs - 120, life: 0.7 + Math.random() * 0.6, max: 1.3, c: Math.random() < 0.5 ? '#ffe9a8' : '#ffb347', sz: 2 + Math.random() * 3 }); }
+      for (var q = 0; q < 22 && parts.length < PMAX; q++) { var qa = Math.random() * TAU, qs = 50 + Math.random() * 150; parts.push({ x: S.pos.x, y: S.pos.y, vx: Math.cos(qa) * qs, vy: Math.sin(qa) * qs - 120, life: 0.7 + Math.random() * 0.6, max: 1.3, c: Math.random() < 0.5 ? '#ffe9a8' : '#ffb347', sz: 2 + Math.random() * 3 }); }
       shake = Math.max(shake, 3);
     }
-    lvlQueue.push({ level: m.level, pts: m.pts });
+    lvlQueue.push({ level: m.level, gain: m.gain || {} });
     if (!lvlBusy) nextLevel();
   }
   function nextLevel() {
@@ -776,7 +782,7 @@
     if (!item) { lvlBusy = false; ov.hidden = true; return; }
     lvlBusy = true;
     ov.classList.remove('out'); ov.hidden = false;
-    ov.innerHTML = '<h2>Nível ' + item.level + '</h2><p class="lvl-pts">+' + item.pts + ' pontos de atributo</p><small>Toque em Atributos para distribuir</small>';
+    ov.innerHTML = '<h2>Nível ' + item.level + '</h2><p class="lvl-pts">' + GD.ATTRS.map(function (k) { return ATTR_SHORT[k] + ' +' + (item.gain[k] || 0); }).join(' · ') + '</p><small>🎲 dado 1d3 em cada atributo</small>';
     var hold = 2600;
     setTimeout(function () { ov.classList.add('out'); }, hold);
     setTimeout(nextLevel, hold + 500);
@@ -795,7 +801,8 @@
 
   /* ======================= desenho ======================= */
   function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, window.innerWidth < 900 ? 1.5 : 2);
+    if (!dprCap) dprCap = window.innerWidth < 900 ? 1.5 : 2;
+    dpr = Math.min(window.devicePixelRatio || 1, dprCap);
     vw = window.innerWidth; vh = window.innerHeight;
     canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
     zoom = Math.max(vw / 1900, vh / 1250, vw < 760 || vh < 520 ? 0.7 : 0.9);
@@ -811,17 +818,50 @@
     if (n > W.wall) { o.x = W.cx + nx / n * W.rx * W.wall; o.y = W.cy + ny / n * W.ry * W.wall; }
   }
 
+  var STEP = 1 / 30, stepAcc = 0, seq = 0, pend = [], corr = { x: 0, y: 0 }, lp = null, lpPrev = null; // lp = posição lógica (passos de 30/s); S.pos = lp suavizada entre um passo e o outro
+  function movePos(pos, vx, vy, flags) {
+    if (flags & 2) return; // atordoado
+    var mine = S.players.get(S.id), sp = (mine && mine.sv ? mine.sv : BASE_SPEED) * ((flags & 16) ? 0.6 : 1); // velocidade vem do servidor (inclui o bônus das armas)
+    pos.x += vx * sp * STEP; pos.y += vy * sp * STEP; clampEll(pos);
+  }
+  // snapshot: posição do servidor + os comandos que ele ainda não usou = onde eu deveria estar agora
+  function reconcile(mine) {
+    var ack = mine.q | 0, i, t = { x: mine.x, y: mine.y };
+    S.srv = { x: mine.x, y: mine.y };
+    if (!S.pos || !lp) return;
+    if (ack === 0 && !seq) return;
+    while (pend.length && pend[0].s <= ack) pend.shift();
+    for (i = 0; i < pend.length; i++) movePos(t, pend[i].x, pend[i].y, mine.f);
+    var ex = t.x - lp.x - corr.x, ey = t.y - lp.y - corr.y;
+    if (Math.hypot(ex, ey) > 220) { lp.x = lpPrev.x = S.pos.x = t.x; lp.y = lpPrev.y = S.pos.y = t.y; corr.x = corr.y = 0; }
+    else { corr.x += ex; corr.y += ey; }
+  }
+  window.__slimeDebug = function () { return { pos: S.pos && { x: S.pos.x, y: S.pos.y }, srv: S.srv, corr: { x: corr.x, y: corr.y }, pend: pend.length, alive: S.alive }; };
   function update(dt) {
-    var k = 1 - Math.exp(-dt * 14), v = inputVec();
+    var k = 1 - Math.exp(-dt * 14);
     if (S.alive && S.pos && S.srv) {
-      if (!(S.myF & 2)) {
-        var mine = S.players.get(S.id), sp = (mine ? GD.moveSpeed(mine.l, (mine.w || []).map(function (id) { return ITEM[id] && ITEM[id].fam; })) : BASE_SPEED) * ((S.myF & 16) ? 0.6 : 1);
-        S.pos.x += v.x * sp * dt; S.pos.y += v.y * sp * dt;
-        clampEll(S.pos);
+      // comandos de movimento numerados, 30 por segundo, iguais aos passos do servidor
+      if (!lp) { lp = { x: S.pos.x, y: S.pos.y }; lpPrev = { x: lp.x, y: lp.y }; stepAcc = 0; }
+      stepAcc = Math.min(stepAcc + dt, 0.2);
+      while (stepAcc >= STEP) {
+        stepAcc -= STEP;
+        var v = inputVec(), am = cfg.aim === 'cursor' ? 1 : 0, aa = 0;
+        if (am) {
+          if (document.body.classList.contains('touch') && !mouse.has) aa = Math.atan2(lastDir.y, lastDir.x);
+          else { var sc = toScreen(S.pos.x, S.pos.y); aa = Math.atan2(mouse.y - sc.y, mouse.x - sc.x); }
+        }
+        seq++;
+        pend.push({ s: seq, x: v.x, y: v.y });
+        if (pend.length > 30) pend.shift();
+        send({ t: 'in', s: seq, mx: +v.x.toFixed(3), my: +v.y.toFixed(3), am: am, a: +aa.toFixed(3) });
+        lpPrev.x = lp.x; lpPrev.y = lp.y;
+        movePos(lp, v.x, v.y, S.myF);
       }
-      var ex = S.srv.x - S.pos.x, ey = S.srv.y - S.pos.y, ed = Math.hypot(ex, ey), moving = v.x || v.y;
-      var kk = ed > 90 ? 1 - Math.exp(-dt * 10) : (!moving ? 1 - Math.exp(-dt * 6) : 1 - Math.exp(-dt * 0.5));
-      S.pos.x += ex * kk; S.pos.y += ey * kk;
+      // correção suave do erro que o servidor apontou (normalmente é zero)
+      var cm = 1 - Math.exp(-dt * 12), cdx = corr.x * cm, cdy = corr.y * cm;
+      lp.x += cdx; lp.y += cdy; lpPrev.x += cdx; lpPrev.y += cdy; corr.x -= cdx; corr.y -= cdy;
+      var al = stepAcc / STEP; // desenha entre o passo anterior e o atual: o movimento fica liso em telas de 60 Hz ou mais
+      S.pos.x = lpPrev.x + (lp.x - lpPrev.x) * al; S.pos.y = lpPrev.y + (lp.y - lpPrev.y) * al;
     }
     S.players.forEach(function (e) {
       e.rx += (e.x - e.rx) * k; e.ry += (e.y - e.ry) * k; e.rr += (e.r - e.rr) * (1 - Math.exp(-dt * 6));
@@ -856,7 +896,7 @@
     SND.boss(bt);
     for (var ci = corpses.length - 1; ci >= 0; ci--) {
       var cp = corpses[ci]; cp.age += dt;
-      if (cp.boss && cp.age < 1.5 && Math.random() < dt * 45 && parts.length < 700) parts.push({ x: cp.x + (Math.random() - 0.5) * 200, y: cp.y + (Math.random() - 0.3) * 90, vx: (Math.random() - 0.5) * 90, vy: -80 - Math.random() * 160, life: 0.7 + Math.random() * 0.8, max: 1.5, c: Math.random() < 0.5 ? '#ffb36b' : '#ff6a2a', sz: 2 + Math.random() * 3.5 });
+      if (cp.boss && cp.age < 1.5 && Math.random() < dt * 45 && parts.length < PMAX) parts.push({ x: cp.x + (Math.random() - 0.5) * 200, y: cp.y + (Math.random() - 0.3) * 90, vx: (Math.random() - 0.5) * 90, vy: -80 - Math.random() * 160, life: 0.7 + Math.random() * 0.8, max: 1.5, c: Math.random() < 0.5 ? '#ffb36b' : '#ff6a2a', sz: 2 + Math.random() * 3.5 });
       if (cp.age > cp.dur) corpses.splice(ci, 1);
     }
     for (ci = splats.length - 1; ci >= 0; ci--) { splats[ci].age += dt; if (splats[ci].age > splats[ci].dur) splats.splice(ci, 1); }
@@ -1035,6 +1075,16 @@
       return;
     }
     var mo = mobAnim(e, def.r, key);
+    if (e.jmp) { // coelho: agacha antes e salta em arco até onde caiu o aviso
+      mo = mo || { ox: 0, oy: 0, sx: 1, sy: 1, rot: 0 };
+      if (e.jmp < 0) { var cr = -e.jmp; mo.sy *= 1 - 0.28 * cr; mo.sx *= 1 + 0.2 * cr; }
+      else {
+        var ju = e.jmp, hgt = Math.sin(Math.PI * ju) * def.r * 4.2;
+        g.save(); g.globalAlpha = 0.35; g.fillStyle = '#000'; g.beginPath(); g.ellipse(e.rx, e.ry + def.r * 0.75, def.r * (0.95 - 0.35 * Math.sin(Math.PI * ju)), def.r * 0.32, 0, 0, TAU); g.fill(); g.restore();
+        mo.oy -= hgt; mo.sy *= 1 + 0.22 * Math.sin(Math.PI * ju); mo.sx *= 1 - 0.12 * Math.sin(Math.PI * ju);
+        if (ju > 0.85) { var lk = (ju - 0.85) / 0.15; mo.sy *= 1 - 0.3 * lk; mo.sx *= 1 + 0.25 * lk; }
+      }
+    }
     if (mo) { g.save(); g.translate(e.rx + mo.ox, e.ry + mo.oy + def.r * 0.7); g.rotate(mo.rot); g.scale(mo.sx, mo.sy); g.translate(0, -def.r * 0.7); A.drawMob(g, key, 0, 0, def.r, T + e.id, e.flip, e.flash); g.restore(); }
     else A.drawMob(g, key, e.rx, e.ry, def.r, T + e.id, e.flip, e.flash);
     if (e.hp < e.mhp) hpBar(g, e.rx, e.ry - def.r * 1.25, Math.max(26, def.r * 1.8), e.hp / e.mhp, '#cf5a4a');
@@ -1195,10 +1245,23 @@
     });
   }
 
+  // Mede o tempo dos quadros; se a média passar de ~27 ms (menos de 37 fps) por 2 segundos, baixa um nível de qualidade (até 3 vezes).
+  function adaptQuality(dt) {
+    if (document.hidden || dt >= 0.05) return; // aba escondida ou engasgo único (troca de aba) não contam
+    qAcc += dt; qN++;
+    if (qN < 90) return;
+    var avg = qAcc / qN; qAcc = 0; qN = 0;
+    if (avg > 0.027 && qLevel < 3) {
+      qLevel++; dprCap = [0, 1.25, 1, 0.8][qLevel]; PMAX = [700, 400, 220, 120][qLevel];
+      if (parts.length > PMAX) parts.length = PMAX;
+      resize();
+    }
+  }
+
   var lastTs = 0;
   function frame(ts) {
     var dt = Math.min(0.05, (ts - lastTs) / 1000 || 0.016); lastTs = ts; T += dt;
-    if (S.joined) { update(dt); updateZoneChip(dt); render(); }
+    if (S.joined) { update(dt); updateZoneChip(dt); render(); adaptQuality(dt); }
     requestAnimationFrame(frame);
   }
 

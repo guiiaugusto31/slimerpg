@@ -61,7 +61,7 @@
       <ul>
         <li>Você só anda: <b>WASD</b> ou setas no PC, joystick no celular.</li>
         <li>As armas atacam e usam habilidades sozinhas, no alvo mais próximo ou na direção do mouse.</li>
-        <li>A cada nível você ganha 8 pontos para distribuir (máximo 60 em cada atributo). Força, Destreza e Mana liberam armas; Saúde dá vida.</li>
+        <li>A cada nível um dado 1d3 sobe cada atributo (máximo 60). Força, Destreza e Mana liberam armas; Saúde dá vida.</li>
         <li>Ao morrer você perde o nível atual, mas guarda seus equipamentos.</li>
         <li><b>I</b> abre a mochila (todos os itens aparecem, bloqueados até você ganhar), <b>M</b> as missões e <b>R</b> os rankings.</li>
         <li>No centro do mapa dorme o <b>Dragão ancestral</b>. Só quem está no nível 20 consegue machucá-lo, e ele larga uma arma mítica.</li>
@@ -72,6 +72,7 @@
 
 <!-- Interface do jogo -->
 <div id="hud" hidden>
+  <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div></div><div id="stickHint">Toque e arraste em qualquer lugar para andar</div></div>
   <section id="stats" class="panel">
     <div class="who"><b id="hName">Slime</b><span class="lv"><span id="hLvl">Nv 1</span><button id="hPts" type="button" hidden aria-label="Distribuir pontos de atributo"></button></span></div>
     <div class="bar hp"><i id="hpFill"></i><em id="hpText"></em></div>
@@ -103,7 +104,6 @@
     <div class="slot armor" id="slotA"><img alt=""><b>Peito</b></div>
   </section>
 
-  <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div></div></div>
 </div>
 
 <!-- Loja de skins (só visuais) -->

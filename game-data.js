@@ -22,7 +22,8 @@ const TIER_COLORS = ['#b8c0c4', '#6fd16f', '#4aa3ff', '#b06cff', '#ffb020', '#ff
 const MYTHIC_TIER = 6;
 
 const ATTRS = ['str', 'dex', 'man', 'hlt'];
-const POINTS_PER_LEVEL = 8; // pontos de atributo ganhos a cada nível, distribuídos pelo jogador
+const POINTS_PER_LEVEL = 0; // não há mais pontos para distribuir: a cada nível rola-se 1d3 em cada atributo (média 2)
+const LEVEL_DIE = 3;        // dado do nível: 1d3 para Força, Destreza, Mana e Saúde
 const ATTR_MAX = 60;        // máximo em um único atributo
 const ATTR_NAMES = { str: 'Força', dex: 'Destreza', man: 'Mana', hlt: 'Saúde', best: 'Maior atributo' };
 
@@ -152,12 +153,12 @@ const MOBS = {
   // e perde ~20% da vida na luta; sem o equipamento da faixa, a luta fica perigosa. Anéis mais fortes ficam mais perto do centro.
   cogumelo: { name: 'Cogumelo-fungo', hp: 30, dmg: 3, speed: 45, aggro: 110, r: 20, xp: 5, tier: 1, atkCd: 1.4, sp: { name: 'Esporos', shape: 'self', radius: 95, trigger: 80, wind: 0.8, cd: 6, mul: 1.3, slow: 2 } },
   coelho: { name: 'Coelho-musgo', hp: 278, dmg: 4, speed: 115, aggro: 150, r: 18, xp: 10, tier: 1, atkCd: 1.1, sp: { name: 'Pulo pesado', shape: 'leap', radius: 80, trigger: 190, wind: 0.7, cd: 5, mul: 1.6, stun: 0.5 } },
-  lobo: { name: 'Lobo-raiz', hp: 440, dmg: 7, speed: 150, aggro: 150, r: 22, xp: 20, tier: 2, atkCd: 1.05, sp: { name: 'Garras duplas', shape: 'cone', range: 120, width: 1.4, trigger: 90, wind: 0.55, cd: 4.5, mul: 1.7 } },
+  lobo: { name: 'Lobo-raiz', hp: 440, dmg: 7, speed: 150, aggro: 150, r: 22, xp: 20, tier: 2, atkCd: 1.05, sp: { name: 'Mordida', shape: 'cone', range: 120, width: 1.4, trigger: 90, wind: 0.55, cd: 4.5, mul: 1.7 } },
   javali: { name: 'Javali-espinho', hp: 951, dmg: 15, speed: 140, aggro: 160, r: 28, xp: 35, tier: 3, atkCd: 1.2, sp: { name: 'Investida', shape: 'dash', range: 280, width: 0.5, trigger: 260, wind: 0.8, cd: 6, mul: 2, stun: 0.6 } },
   broto: { name: 'Broto ancião', hp: 1877, dmg: 32, speed: 65, aggro: 170, r: 34, xp: 55, tier: 4, atkCd: 1.4, sp: { name: 'Raízes', shape: 'ground', radius: 120, trigger: 220, wind: 1.0, cd: 7, mul: 1.6, stun: 0.9 } },
   aranha: { name: 'Aranha-véu', hp: 3300, dmg: 36, speed: 175, aggro: 170, r: 26, xp: 80, tier: 5, atkCd: 1.1, slow: 1.5, sp: { name: 'Tiro de teia', shape: 'shot', range: 380, width: 0.14, hitR: 30, trigger: 340, wind: 0.6, cd: 6, mul: 0.9, slow: 3.5 } },
   // Árvore anciã: guardiã do anel mais próximo do dragão. Lenta e pesada: mesma vida da aranha (o teto de dano da faixa 5 não muda), bate mais forte.
-  arvore: { name: 'Árvore anciã', hp: 3300, dmg: 44, speed: 70, aggro: 180, r: 44, xp: 95, tier: 5, atkCd: 1.5, sp: { name: 'Galho pesado', shape: 'ground', radius: 150, trigger: 260, wind: 1.2, cd: 8, mul: 2.2, stun: 1.0 } },
+  arvore: { name: 'Árvore anciã', hp: 3300, dmg: 44, speed: 70, aggro: 180, r: 44, xp: 95, tier: 5, atkCd: 1.5, sp: { name: 'Galho pesado', shape: 'ground', radius: 135, core: 0.6, trigger: 260, wind: 1.2, cd: 8, mul: 2.2, stun: 1.0 } },
   // Chefe: dorme no centro e só age depois de levar golpes. Sopro de fogo e pancada no chão têm aviso antes de sair.
   dragao: {
     name: 'Dragão ancestral', hp: 75000, dmg: 200, speed: 120, aggro: 0, r: 80, xp: 1200, tier: 6, atkCd: 1.7, boss: true,
@@ -172,6 +173,9 @@ const MOBS = {
 // leash: distância máxima até quem ele persegue. rage: abaixo dessa fração de vida ele fica mais rápido e agressivo.
 // scale: cada jogador extra que o está machucando soma essa fração à vida dele (até scaleCap jogadores), para um grupo grande não passar por cima.
 // armorItem/armorDrop: além da arma mítica, quem vence ainda tem esta chance de levar o peitoral do dragão (se ainda não tiver).
+// Varinha: o tiro estoura em n estilhaços teleguiados (velocidade, alcance, curva em rad/s, dano em fração do tiro, seek = até onde procuram outro alvo)
+const WAND_SPLIT = { n: 5, speed: 520, range: 340, turn: 8, mul: 0.6, seek: 300 };
+const TRAIL_HEAL = { time: 2, width: 40 }; // rastro de cura (rapieira + sinos): dura 2 s, cura quem fez a investida ao ficar nele
 const BOSS = { mob: 'dragao', respawn: 300, minShare: 0.06, clear: 270, minLevel: 20, leash: 1500, rage: 0.3, scale: 0.2, scaleCap: 12, armorItem: 'draco_6', armorDrop: 0.5 };
 // Zonas em anéis elípticos, da borda (fraca) para a praça do centro (forte). nd = distância normalizada ao centro.
 const ZONES = [
@@ -180,8 +184,8 @@ const ZONES = [
   { min: 0.46, max: 0.62, mob: 'lobo', weight: 0.18 },
   { min: 0.34, max: 0.46, mob: 'javali', weight: 0.14 },
   { min: 0.22, max: 0.34, mob: 'broto', weight: 0.10 },
-  { min: 0.155, max: 0.22, mob: 'aranha', weight: 0.07 },
-  { min: 0.08, max: 0.155, mob: 'arvore', weight: 0.06 }
+  { min: 0.155, max: 0.22, mob: 'aranha', weight: 0.0292, gap: 250 }, // gap: distância mínima entre dois da mesma zona (aranhas e árvores ficam bem espaçadas)
+  { min: 0.08, max: 0.155, mob: 'arvore', weight: 0.0219, gap: 290 }
 ];
 // Missões: as 9 armas lendárias (faixa 5) só vêm de missões, nunca de drops.
 // kill/pk acumulam entre as vidas. survive/nodamage/onehit/level contam só na vida atual.
@@ -199,7 +203,7 @@ const QUESTS = [
 
 // Missão do Arco: "monstro forte" (faixa 3 ou mais) que morre com no máximo este número de golpes. Com o teto de dano por golpe, matar de um só deixou de ser possível.
 const ONEHIT_MAX_HITS = 3;
-const MOB_COUNT = 260;
+const MOB_COUNT = 238; // com as aranhas e árvores mais raras: os outros monstros continuam na mesma quantidade de antes
 const MOB_RESPAWN = [8, 14];
 const DROP_WEAPON = 0.14;
 const DROP_ARMOR = 0.07;
@@ -347,7 +351,7 @@ function publicData() {
 }
 
 module.exports = {
-  MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS, ATTRS, ATTR_NAMES, POINTS_PER_LEVEL, ATTR_MAX,
+  MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS, WAND_SPLIT, TRAIL_HEAL, ATTRS, ATTR_NAMES, POINTS_PER_LEVEL, LEVEL_DIE, ATTR_MAX,
   FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, QUESTS, MOB_COUNT, MOB_RESPAWN, DROP_WEAPON, DROP_ARMOR,
   DROP_MAX_TIER, DROP_MAX_TIER_ARMOR, ITEM_LIMIT, PLAYER_REGEN, PLAYER_STUN_MULT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, TUNE, ONEHIT_MAX_HITS, MIN_HITS, REF_ATTR, mobHpOfTier, hitCap, howToGet, mixName, mixCd, MIX_DMG, xpNeed, attrOf, weaponDamage, skillDamage, armorStats, meetsReq, moveSpeed, MOVE_BASE, publicData,
   SKIN_SLOTS, SKINS, SKIN_PACKS, skinEmpty, skinClean, skinCode, skinDecode

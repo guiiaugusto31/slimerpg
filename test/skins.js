@@ -52,9 +52,9 @@ async function suite(label, makeStore, reopen) {
   const { srv, base } = await serve(acc);
 
   const loja = await call(base, 'GET', '/api/loja');
-  ok(loja.status === 200 && loja.body.packs.length === 4 && loja.body.contato === 'guiiaugusto_32@outlook.com', 'GET /api/loja lista os 4 pacotes e o contato');
+  ok(loja.status === 200 && loja.body.packs.length === 4 && loja.body.contato === 'guiaugusto_32@outlook.com', 'GET /api/loja lista os 4 pacotes e o contato');
   ok(loja.body.packs.every((p) => p.code && pix.parse(p.code).crcOk && pix.parse(p.code)['54'] === p.price.toFixed(2)), 'cada pacote traz um Pix com o valor certo');
-  ok(loja.body.packs.every((p) => pix.parse(p.code)['26'].includes('guiiaugusto_32@outlook.com')), 'a chave Pix é o e-mail combinado');
+  ok(loja.body.packs.every((p) => pix.parse(p.code)['26'].includes('guiaugusto_32@outlook.com')), 'a chave Pix é o e-mail combinado');
 
   const r = await call(base, 'POST', '/api/register', { email: 'Cli@Teste.com', password: 'senha-forte-1' });
   const tok = r.body.token;
