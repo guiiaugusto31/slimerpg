@@ -38,7 +38,11 @@ Você só anda. As armas atacam e usam habilidades sozinhas. A mira tem dois mod
 
 ## Regras
 
-**Atributos.** Força, Destreza, Mana e Saúde começam em 1. A cada nível, cada um rola 1d3 (sorteado no servidor, com a animação dos dados na tela). Quem chega ao nível 20 fica, em média, com 39 em cada atributo. Saúde define a vida: `40 + 10 × Saúde + bônus do peitoral`. Força, Destreza e Mana liberam armas e aumentam o dano delas. Não existe barra de mana.
+**Velocidade ao andar.** Quanto menor o slime, mais rápido: de +10% sobre a base (170) no nível 1 a -8% no nível 20. Armas de perto deixam um pouco mais rápido que armas de longe: só corpo a corpo +6%, uma de cada +3%, só à distância +0%. A conta fica em `moveSpeed` (`game-data.js`) e vale igual no servidor e no cliente.
+
+**Atributos.** Força, Destreza, Mana e Saúde começam em 1. A cada nível você ganha **8 pontos** e distribui como quiser (botão Atributos ou tecla P), com **máximo de 60** em cada atributo. Ao morrer, o nível, os atributos e os pontos voltam ao começo. Isso é só no servidor: `alloc` ignora pontos que você não tem e passa do máximo. Saúde define a vida: `40 + 10 × Saúde + bônus do peitoral`. Força, Destreza e Mana liberam armas e aumentam o dano delas. Não existe barra de mana.
+
+**Ataques dos monstros.** Cada monstro comum tem um ataque especial com aviso vermelho no chão antes de sair (dá para desviar): cogumelo solta esporos em volta, coelho pula e cai na sua posição, lobo dá duas garras em cone, javali faz uma investida em linha, broto levanta raízes sob você, aranha atira uma bola de teia em linha reta (acerta o primeiro no caminho e deixa lento), árvore anciã derruba um galho pesado. Os números ficam em `sp` de cada monstro em `game-data.js`.
 
 **Armas.** Você equipa 2 armas e 1 peitoral. A faca inicial causa dano de cerca de 30% acima do seu maior atributo mais 1, e alcança 50 de distância. As outras são 9 armas em 6 faixas, com requisito por atributo:
 
@@ -89,6 +93,7 @@ Armas de perto (martelo, espada, chicote, sinos) acertam vários inimigos de uma
 | 4 | Charneca dos Javalis | Javali-espinho | 35 |
 | 5 | Bosque Ancião | Broto ancião | 55 |
 | 6 | Ninho das Aranhas | Aranha-véu (deixa lento) | 80 |
+| 7 | Clareira Anciã | Árvore anciã (lenta e pesada, entre a aranha e o dragão) | 95 |
 | centro | Toca do dragão | Dragão ancestral | 1200 |
 
 **Dragão ancestral.** Dorme no centro do mapa e é muito mais forte que qualquer outro monstro. Só quem está no nível 20 consegue machucá-lo. Enquanto ninguém o acerta, ele não anda nem ataca; ao levar um golpe, acorda e persegue quem mais o machucou. Ele tem três ataques: garra (perto), sopro de fogo em cone e pancada no chão em área. O sopro e a pancada são **avisados na tela** antes de sair (cone ou círculo vermelho), então dá para desviar. Abaixo de 30% de vida ele enlouquece: fica mais rápido e ataca mais. Se ninguém o acertar por 10 segundos, ele volta para casa, dorme e se cura. A vida dele cresce 20% por jogador extra que o esteja machucando (até 12 jogadores), então um grupo grande não passa por cima. Quem causar pelo menos 6% da vida dele ganha **uma arma mítica aleatória** que ainda não tem e, a cada vitória, ainda tem **50% de chance de levar o Peitoral Dracônico** (até conseguir). Ele volta 5 minutos depois.
@@ -121,7 +126,7 @@ Os efeitos ficam em `public/fx.js`, as animações em `public/game.js` e os dese
 
 ## Som
 
-Tudo é sintetizado na hora com WebAudio (`public/audio.js`), sem arquivos de áudio. A música é um tema calmo de floresta no clima de Payon (Ragnarok): escala pentatônica em Ré, gayageum (cordas beliscadas), flauta, drone grave e um tambor suave; perto do dragão acordado entram tambores e mais tensão. Os efeitos cobrem passos de gelatina, golpes de cada estilo de arma (estocada, corte, pancada, arco, magia e sinos), habilidades, o bote de cada monstro, sopro, pancada e garras do dragão, derrota, subida de nível e interface, com volume e lado conforme a distância. O botão **Som** (na tela inicial e ao lado do jogo) alterna entre música e efeitos, só efeitos e mudo, e a escolha fica guardada no navegador. O navegador só libera o áudio depois do primeiro toque ou tecla. Para trocar notas, andamento ou acordes, veja a seção de música em `public/audio.js` (`PROG_A`, `MEL_A` e companhia).
+Tudo é sintetizado na hora com WebAudio (`public/audio.js`), sem arquivos de áudio. A música é um tema calmo de floresta no clima de Payon (Ragnarok): escala pentatônica em Ré, gayageum (cordas beliscadas), flauta, drone grave e um tambor suave; perto do dragão acordado entram tambores e mais tensão. Os efeitos cobrem passos de gelatina, golpes de cada estilo de arma (estocada, corte, pancada, arco, magia e sinos), habilidades, o bote de cada monstro, sopro, pancada e garras do dragão, derrota, subida de nível e interface, com volume e lado conforme a distância. O botão **Som** (na tela inicial e ao lado do jogo) alterna entre música e efeitos, só efeitos e mudo, e a escolha fica guardada no navegador. O navegador só libera o áudio depois do primeiro toque ou tecla. **Trilhas:** `campo` (cogumelo e coelho, alegre), `floresta` (lobo e javali, o tema de Payon), `sombra` (broto e aranha, lenta e tensa), `anciao` (árvore anciã, sinos e graves), `toca` (perto do dragão dormindo, coração batendo) e `dragao` (tema próprio de guerra, só quando o dragão está acordado e perto). A troca acontece na virada do compasso, e ao despertar o dragão toca uma pancada com metais descendo e o rugido. Para mexer em notas, andamento ou acordes, veja `TRACKS` em `public/audio.js`.
 
 ## Contas e progresso
 
@@ -191,7 +196,7 @@ Skins são **só visuais**: nada de arma, roupa, nível ou atributo (o jogo tem 
 |---|---|---|
 | `ADMIN_TOKEN` | senha do administrador para liberar skins (16+ caracteres). **Sem ela a liberação fica desligada (503).** | nenhum |
 | `PIX_CHAVE` | chave Pix que recebe | o e-mail de contato |
-| `CONTATO_EMAIL` | e-mail mostrado na loja | `guiiaugusto_32@outlook.com` |
+| `CONTATO_EMAIL` | e-mail mostrado na loja | `guiaugusto_32@outlook.com` |
 | `PIX_NOME` / `PIX_CIDADE` | nome e cidade que aparecem no app do banco (sem acento, até 25 e 15 letras) | `SLIMERPG` / `BRASIL` |
 
 **Liberar um pacote** (ids: `chapeus`, `mago`, `pirata`, `tudo`; o e-mail é o da conta; `"remover": true` desfaz um engano):
@@ -263,4 +268,4 @@ Para ter um domínio próprio depois, registre o domínio e adicione-o em **Sett
 
 ## Testes
 
-`npm test` sobe o servidor, conecta clientes falsos e confere: salas de 20, dados 1d3, subida de nível, PvP ligado desde o nível 1, morte, XP de PvP, equipamento, fusão, drops sem duplicata, o catálogo da mochila, as 9 missões, as 9 armas atacando e usando habilidade, o dragão (dorme até levar golpe, vida que cresce com o grupo, arma mítica e Peitoral Dracônico para quem causa dano, com os atributos dele) e a validação do save. `node test/ranking.js` (também roda no `npm test`) confere os rankings: coroa, abates (nível mínimo da vítima e intervalo para repetir), tempo de jogo, ordenação dos dois rankings, gravação no arquivo e no Postgres de mentira, exclusão da conta, e os eventos de verdade no servidor (matar jogador, subir ao 20, derrotar o dragão, a API). `node test/contas.js` (também roda no `npm test`) confere as contas: cadastro, login, senha errada, códigos e recuperação de senha, limites de tentativas, exclusão, o mesmo conjunto de testes no arquivo e num Postgres de mentira, e a entrada no jogo com token (progresso vindo do servidor, importação do navegador, conta aberta em outro lugar, servidor de contas fora do ar).
+`npm test` sobe o servidor, conecta clientes falsos e confere: salas de 20, pontos de atributo (8 por nível, máximo 60), subida de nível, PvP ligado desde o nível 1, morte, XP de PvP, equipamento, fusão, drops sem duplicata, o catálogo da mochila, as 9 missões, as 9 armas atacando e usando habilidade, o dragão (dorme até levar golpe, vida que cresce com o grupo, arma mítica e Peitoral Dracônico para quem causa dano, com os atributos dele) e a validação do save. `node test/ranking.js` (também roda no `npm test`) confere os rankings: coroa, abates (nível mínimo da vítima e intervalo para repetir), tempo de jogo, ordenação dos dois rankings, gravação no arquivo e no Postgres de mentira, exclusão da conta, e os eventos de verdade no servidor (matar jogador, subir ao 20, derrotar o dragão, a API). `node test/contas.js` (também roda no `npm test`) confere as contas: cadastro, login, senha errada, códigos e recuperação de senha, limites de tentativas, exclusão, o mesmo conjunto de testes no arquivo e num Postgres de mentira, e a entrada no jogo com token (progresso vindo do servidor, importação do navegador, conta aberta em outro lugar, servidor de contas fora do ar).

@@ -42,7 +42,7 @@
   var ONDA_R = 0.444, MOUTH = { x: 137, y: -60 };
   function fxImg(n) { return window.ART && window.ART.img ? window.ART.img(n) : null; }
 
-  var DUR = { thrust: 0.18, smash: 0.42, arc: 0.3, ring: 0.36, orbx: 0.42, s_burst: 0.62, s_cone: 0.45, s_dash: 0.38, d_breath: 0.85, d_slam: 1.0, d_claw: 0.36, hit: 0.24, pop: 0.26, dust: 0.55, lvl: 0.95 };
+  var DUR = { thrust: 0.18, smash: 0.42, arc: 0.3, ring: 0.36, orbx: 0.42, s_burst: 0.62, s_cone: 0.45, s_dash: 0.38, d_breath: 0.85, d_slam: 1.0, d_claw: 0.36, ms: 0.7, hit: 0.24, pop: 0.26, dust: 0.55, lvl: 0.95 };
   function dur(kind) { return DUR[kind] || 0.3; }
 
   function glow(g, x, y, r, c, a) {
@@ -179,6 +179,64 @@
           g.beginPath(); g.moveTo(sx - Math.cos(sa4) * 16, sy - Math.sin(sa4) * 16); g.lineTo(sx + Math.cos(sa4) * 16, sy + Math.sin(sa4) * 16); g.stroke();
         }
         glow(g, to[0], to[1], 22, P.h, 0.6 * a);
+        break;
+      }
+      case 'ms': { // ataques especiais dos monstros comuns (desenhados no estilo do jogo: contorno escuro + cor do bicho)
+        var mk = f.fam, rad = f.size, ink = 'rgba(40,24,30,' + (0.85 * a) + ')';
+        if (mk === 'cogumelo') { // nuvem de esporos
+          g.globalCompositeOperation = 'source-over';
+          for (i = 0; i < 16; i++) {
+            var sa = R() * TAU, sr = rad * (0.2 + 0.8 * e3) * (0.4 + 0.6 * R()), sz = 8 + R() * 12;
+            g.fillStyle = rgba(i % 3 ? '#b6e07a' : '#e6d6ff', a * 0.6); g.strokeStyle = ink; g.lineWidth = 2;
+            g.beginPath(); g.arc(f.x + Math.cos(sa) * sr, f.y + Math.sin(sa) * sr - p * 14, sz * (0.6 + 0.4 * a), 0, TAU); g.fill(); g.stroke();
+          }
+        } else if (mk === 'coelho') { // pouso: onda de terra e pó
+          g.globalCompositeOperation = 'source-over';
+          g.strokeStyle = rgba('#e9d9b0', a * 0.9); g.lineWidth = 8 * a + 1; g.beginPath(); g.arc(f.x, f.y, rad * (0.3 + 0.7 * e3), 0, TAU); g.stroke();
+          for (i = 0; i < 10; i++) { var da = i * TAU / 10 + R() * 0.3, dr = rad * (0.3 + 0.7 * e3); g.fillStyle = rgba('#c9b27c', a * 0.8); g.beginPath(); g.arc(f.x + Math.cos(da) * dr, f.y + Math.sin(da) * dr - p * 10, 7 * a + 2, 0, TAU); g.fill(); }
+        } else if (mk === 'lobo') { // duas garras
+          g.globalCompositeOperation = 'source-over';
+          for (i = -1; i <= 1; i += 2) {
+            var ca = f.a + i * 0.32, sw2 = Math.min(1, p * 3);
+            g.strokeStyle = rgba('#ffffff', a); g.lineWidth = 7 * a + 1; g.beginPath(); g.moveTo(f.x + Math.cos(ca - 0.5) * rad * 0.3, f.y + Math.sin(ca - 0.5) * rad * 0.3);
+            g.quadraticCurveTo(f.x + Math.cos(ca) * rad * 0.9, f.y + Math.sin(ca) * rad * 0.9, f.x + Math.cos(ca + 0.5 * sw2) * rad * 0.35, f.y + Math.sin(ca + 0.5 * sw2) * rad * 0.35); g.stroke();
+            g.strokeStyle = 'rgba(120,150,190,' + (0.8 * a) + ')'; g.lineWidth = 3; g.stroke();
+          }
+        } else if (mk === 'javali') { // rastro de investida
+          g.globalCompositeOperation = 'source-over';
+          var ex = f.x + Math.cos(f.a) * rad, ey = f.y + Math.sin(f.a) * rad;
+          g.strokeStyle = rgba('#d8a878', a * 0.7); g.lineWidth = 38 * a + 4; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(ex, ey); g.stroke();
+          g.strokeStyle = rgba('#ffffff', a * 0.9); g.lineWidth = 6 * a + 1; g.stroke();
+          for (i = 0; i < 8; i++) { var u = R(); g.fillStyle = rgba('#c9b27c', a); g.beginPath(); g.arc(f.x + (ex - f.x) * u + (R() - 0.5) * 30, f.y + (ey - f.y) * u + (R() - 0.5) * 30, 6 * a + 2, 0, TAU); g.fill(); }
+        } else if (mk === 'broto') { // raízes que saem do chão
+          g.globalCompositeOperation = 'source-over';
+          var gw = Math.min(1, p * 3.2);
+          for (i = 0; i < 9; i++) {
+            var ra = i * TAU / 9 + R() * 0.4, rl = rad * (0.45 + 0.55 * R()) * gw;
+            g.strokeStyle = ink; g.lineWidth = 12 * a + 3; g.beginPath(); g.moveTo(f.x, f.y); g.quadraticCurveTo(f.x + Math.cos(ra + 0.4) * rl * 0.5, f.y + Math.sin(ra + 0.4) * rl * 0.5, f.x + Math.cos(ra) * rl, f.y + Math.sin(ra) * rl); g.stroke();
+            g.strokeStyle = rgba('#8a5a32', a); g.lineWidth = 7 * a + 1; g.stroke();
+            g.fillStyle = rgba('#7cc24a', a); g.beginPath(); g.arc(f.x + Math.cos(ra) * rl, f.y + Math.sin(ra) * rl, 6 * a + 2, 0, TAU); g.fill();
+          }
+        } else if (mk === 'aranha') { // tiro de teia: bola de seda voa em linha reta e, se acerta, abre uma rede em cima do alvo
+          g.globalCompositeOperation = 'source-over';
+          var fl = Math.min(1, p / 0.45), L2 = rad * (1 - Math.pow(1 - fl, 2)), bx2 = f.x + Math.cos(f.a) * L2, by2 = f.y + Math.sin(f.a) * L2;
+          g.strokeStyle = rgba('#ffffff', a * 0.8); g.lineWidth = 2.5; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(bx2, by2); g.stroke(); // fio de seda
+          g.strokeStyle = rgba('#c9b8ff', a * 0.5); g.lineWidth = 6; g.stroke();
+          if (fl < 1) { g.fillStyle = ink; g.beginPath(); g.arc(bx2, by2, 13, 0, TAU); g.fill(); g.fillStyle = '#f4f0ff'; g.beginPath(); g.arc(bx2, by2, 10, 0, TAU); g.fill(); g.strokeStyle = 'rgba(150,130,200,.8)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(bx2 - 8, by2); g.lineTo(bx2 + 8, by2); g.moveTo(bx2, by2 - 8); g.lineTo(bx2, by2 + 8); g.stroke(); }
+          else { // rede aberta (maior se acertou alguém)
+            var nr = (f.extra ? 56 : 30) * (0.6 + 0.4 * Math.min(1, (p - 0.45) / 0.2)), na = Math.max(0, 1 - (p - 0.65) / 0.35);
+            g.strokeStyle = rgba('#ffffff', na); g.lineWidth = 2.5;
+            for (i = 0; i < 8; i++) { var ra2 = i * TAU / 8; g.beginPath(); g.moveTo(bx2, by2); g.lineTo(bx2 + Math.cos(ra2) * nr, by2 + Math.sin(ra2) * nr); g.stroke(); }
+            for (var q2 = 1; q2 <= 3; q2++) { g.beginPath(); for (i = 0; i <= 8; i++) { var rb = i * TAU / 8; var rx = bx2 + Math.cos(rb) * nr * q2 / 3 * (i % 2 ? 0.88 : 1), ry = by2 + Math.sin(rb) * nr * q2 / 3 * (i % 2 ? 0.88 : 1); if (i) g.lineTo(rx, ry); else g.moveTo(rx, ry); } g.stroke(); }
+          }
+        } else if (mk === 'arvore') { // galho que despenca com folhas douradas
+          g.globalCompositeOperation = 'source-over';
+          var fall = Math.min(1, p * 4);
+          g.fillStyle = 'rgba(60,30,10,' + (0.35 * a) + ')'; g.beginPath(); g.arc(f.x, f.y, rad * (0.4 + 0.6 * e3), 0, TAU); g.fill();
+          g.save(); g.translate(f.x, f.y - (1 - fall) * rad * 1.3); g.rotate(0.5);
+          g.fillStyle = ink; g.fillRect(-rad * 0.95, -13, rad * 1.9, 26); g.fillStyle = rgba('#8a5a32', a); g.fillRect(-rad * 0.9, -9, rad * 1.8, 18); g.restore();
+          for (i = 0; i < 14; i++) { var la = R() * TAU, lr = rad * (0.2 + 0.9 * e3) * R(); g.fillStyle = rgba(i % 2 ? '#f2c14e' : '#d98b2b', a); g.beginPath(); g.ellipse(f.x + Math.cos(la) * lr, f.y + Math.sin(la) * lr - p * 20, 8 * a + 2, 4 * a + 1, la, 0, TAU); g.fill(); }
+        }
         break;
       }
       case 'd_breath': { // sopro do dragão: jato de fogo que sai da boca e abre em cone

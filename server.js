@@ -1,5 +1,5 @@
 'use strict';
-// SlimeRPG — servidor: HTTP estático + WebSocket. Toda a lógica de combate, XP, dados (1d3) e missões roda aqui.
+// SlimeRPG — servidor: HTTP estático + WebSocket. Toda a lógica de combate, XP, pontos de atributo e missões roda aqui.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -36,7 +36,7 @@ function angDiff(a, b) {
 function clampWorld(o) {
   const nx = (o.x - W.cx) / W.rx, ny = (o.y - W.cy) / W.ry;
   const n = Math.hypot(nx, ny);
-  if (n > 1) { o.x = W.cx + (nx / n) * W.rx; o.y = W.cy + (ny / n) * W.ry; }
+  if (n > W.wall) { o.x = W.cx + (nx / n) * W.rx * W.wall; o.y = W.cy + (ny / n) * W.ry * W.wall; }
 }
 function segDist(px, py, x0, y0, x1, y1) {
   const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy;
@@ -152,10 +152,11 @@ function resetMob(m) {
     m.state = 0; m.cast = null; m.cdB = 3; m.cdS = 3; m.gcd = 0; m.calmT = 0; m.threat = new Map(); m.dmgBy = new Map();
     return;
   }
+  m.cast = null; m.spCd = undefined;
   const z = D.ZONES[m.zi];
   let ang, nd;
   for (let k = 0; k < 8; k++) { // sorteia de novo se cair dentro da toca do dragão
-    ang = Math.random() * Math.PI * 2; nd = rnd(z.min, Math.min(z.max, 0.97));
+    ang = Math.random() * Math.PI * 2; nd = rnd(z.min, Math.min(z.max, W.wall - 0.03));
     if (Math.hypot(Math.cos(ang) * nd * W.rx, Math.sin(ang) * nd * W.ry) > D.BOSS.clear) break;
   }
   m.x = m.hx = W.cx + Math.cos(ang) * nd * W.rx;
@@ -168,7 +169,7 @@ function makePlayer(ws, name, color, save) {
   const p = {
     id: nextPlayerId++, ws, isPlayer: true, name, color, gone: false, room: null,
     x: 0, y: 0, face: 0, mx: 0, my: 0, am: false, aim: 0,
-    level: 1, xp: 0, stats: { str: 1, dex: 1, man: 1, hlt: 1 }, hp: 1, maxHp: 1, r: 16,
+    level: 1, xp: 0, points: 0, stats: { str: 1, dex: 1, man: 1, hlt: 1 }, hp: 1, maxHp: 1, r: 16,
     inv: [], equip: { w: ['faca', null], a: 'vital_0' }, kills: {}, pk: 0, done: new Set(),
     alive: false, protectUntil: 0, stun: 0, slowT: 0, wt: [0, 0], st: [0, 0],
     combatT: 0, aliveT: 0, nodT: 0, oneHits: 0, lastSave: -99, saveDirty: false,
@@ -215,6 +216,7 @@ function recalc(p) {
   p.armorItem = useArm.id;
   p.armor = D.armorStats(useArm, p.stats);
   p.maxHp = 40 + p.stats.hlt * 10 + p.armor.hp;
+  p.spd = null; // a velocidade é recalculada abaixo, depois de saber quais armas estão ativas
   if (p.hp > p.maxHp) p.hp = p.maxHp;
   p.active = [];
   for (let slot = 0; slot < 2; slot++) {
@@ -222,13 +224,19 @@ function recalc(p) {
     if (it && it.kind === 'weapon' && D.meetsReq(it, p.stats)) p.active.push({ slot, item: it, F: D.FAMILIES[it.fam] });
   }
   if (!p.active.length) p.active.push({ slot: 0, item: D.ITEMS.faca, F: D.FAMILIES.faca }); // sem arma ativa: a faca ajuda
+  p.spd = D.moveSpeed(p.level, p.active.map((a) => a.item.fam));
   const w0 = D.ITEMS[p.equip.w[0]];
   // Fusão: o MESMO item nos dois slots (como só existe 1 de cada no inventário, é assim que se funde).
   p.fused = !!(w0 && p.equip.w[0] === p.equip.w[1] && D.meetsReq(w0, p.stats) && D.FAMILIES[w0.fam].skill);
+  // Mistura: duas armas diferentes ativas, as duas com habilidade
+  const mixOk = !p.fused && p.active.length === 2 && p.active[0].item.id !== p.active[1].item.id && p.active[0].F.skill && p.active[1].F.skill;
+  p.mixed = !!mixOk;
+  p.mixName = mixOk ? D.mixName(p.active[0].item.fam, p.active[1].item.fam) : '';
+  p.mixCd = mixOk ? D.mixCd(p.active[0].item.fam, p.active[1].item.fam) : 0;
 }
 
 function spawnPlayer(room, p) {
-  const ang = Math.random() * Math.PI * 2, nd = rnd(0.8, 0.94);
+  const ang = Math.random() * Math.PI * 2, nd = rnd(0.8, W.wall - 0.03);
   p.x = W.cx + Math.cos(ang) * nd * W.rx;
   p.y = W.cy + Math.sin(ang) * nd * W.ry;
   recalc(p);
@@ -253,9 +261,9 @@ function fx(room, kind, x, y, ang, size, fam, tier, extra) {
 
 function meMsg(p) {
   return {
-    t: 'me', lv: p.level, xp: p.xp, xn: p.level >= D.MAX_LEVEL ? 0 : D.xpNeed(p.level), stats: p.stats,
+    t: 'me', lv: p.level, pts: p.points, xp: p.xp, xn: p.level >= D.MAX_LEVEL ? 0 : D.xpNeed(p.level), stats: p.stats,
     hp: Math.round(p.hp), mhp: p.maxHp, inv: p.inv, eq: p.equip, act: p.active.map((a) => a.slot),
-    fu: p.fused, wcd: [+p.wt[0].toFixed(2), +p.wt[1].toFixed(2)], scd: [+p.st[0].toFixed(2), +p.st[1].toFixed(2)],
+    fu: p.fused, mx: p.mixed ? [p.mixName, p.mixCd] : 0, wcd: [+p.wt[0].toFixed(2), +p.wt[1].toFixed(2)], scd: [+p.st[0].toFixed(2), +p.st[1].toFixed(2)],
     arm: p.armor, armId: p.armorItem, alive: p.alive,
     q: { kills: p.kills, pk: p.pk, alive: Math.floor(p.aliveT), nod: Math.floor(p.nodT), one: p.oneHits, done: [...p.done] }
   };
@@ -342,7 +350,7 @@ function killPlayer(room, v, src) {
     feed(room, v.name + ' foi derrotado por ' + by + ' (nv ' + old + ')');
   }
   // Morreu = perde todo o nível atual. Equipamentos e progresso de missões permanecem.
-  v.level = 1; v.xp = 0; v.stats = { str: 1, dex: 1, man: 1, hlt: 1 };
+  v.level = 1; v.xp = 0; v.points = 0; v.stats = { str: 1, dex: 1, man: 1, hlt: 1 };
   v.aliveT = 0; v.nodT = 0; v.oneHits = 0; v.stun = 0; v.slowT = 0;
   recalc(v);
   v.saveDirty = true;
@@ -352,19 +360,19 @@ function addXp(room, p, amount) {
   if (p.level >= D.MAX_LEVEL || amount <= 0) return;
   p.xp += amount;
   ev(room, ['d', Math.round(p.x), Math.round(p.y - p.r - 16), amount, 2]);
-  const rolls = [];
+  let ups = 0;
   while (p.level < D.MAX_LEVEL && p.xp >= D.xpNeed(p.level)) {
     p.xp -= D.xpNeed(p.level);
     p.level++;
-    const g = {};
-    for (const k of D.ATTRS) { g[k] = 1 + Math.floor(Math.random() * 3); p.stats[k] += g[k]; } // 1d3 por atributo, no servidor
-    rolls.push(g);
+    ups++;
+    p.points += D.POINTS_PER_LEVEL; // o jogador distribui os pontos (máximo ATTR_MAX por atributo)
   }
-  if (rolls.length) {
+  if (ups) {
     if (p.level >= D.MAX_LEVEL) p.xp = 0;
     recalc(p);
     p.hp = p.maxHp;
-    send(p, { t: 'lvl', level: p.level, rolls });
+    send(p, { t: 'lvl', level: p.level, ups, pts: ups * D.POINTS_PER_LEVEL });
+    send(p, meMsg(p));
     if (p.level >= D.MAX_LEVEL) {
       feed(room, p.name + ' chegou ao nível ' + D.MAX_LEVEL + ' e ganhou a coroa!');
       if (ranking && p.acct) ranking.crowned(p.acct.id);
@@ -497,12 +505,15 @@ function basicAttack(room, p, a, tg) {
   }
 }
 
-function trySkill(room, p, a) {
+// mix: a habilidade faz parte de uma habilidade mista (quem controla a recarga é trySkillMix) e devolve se disparou.
+function trySkill(room, p, a, mix) {
   const F = a.F, S = F.skill, i = a.slot;
-  if (!S) return;
-  if (p.fused && i === 1) return; // habilidade fundida: um único disparo por ciclo, com o cooldown da arma
-  if (p.st[i] > 0) return;
-  const fu = p.fused, am = fu ? 1.4 : 1, dm = fu ? 1.5 : 1;
+  if (!S) return false;
+  if (!mix) {
+    if (p.fused && i === 1) return false; // habilidade fundida: um único disparo por ciclo, com o cooldown da arma
+    if (p.st[i] > 0) return false;
+  }
+  const fu = p.fused, am = fu ? 1.4 : 1, dm = (fu ? 1.5 : 1) * (mix ? D.MIX_DMG : 1);
   let trig;
   switch (S.kind) {
     case 'burst': trig = findTarget(room, p, S.radius * am, true); break;
@@ -510,13 +521,17 @@ function trySkill(room, p, a) {
     case 'dash': trig = findTarget(room, p, S.dist * am, false); break;
     case 'volley': trig = findTarget(room, p, S.reach * am, false); break;
     case 'bolt': trig = findTarget(room, p, S.reach * am, false); break;
-    default: return;
+    default: return false;
   }
-  if (!trig) return;
+  // sem inimigo no alcance, só a habilidade de cura é usada (e só se estiver machucado)
+  if (!trig) {
+    if (S.kind === 'burst' && S.heal && p.hp < p.maxHp) trig = { e: null, d: 0, ang: p.face };
+    else return false;
+  }
   const it = a.item, fam = it.fam, tier = it.tier, type = F.type;
   const dmg = Math.round(D.skillDamage(it, p.stats) * dm);
   const ang = trig.ang;
-  p.st[i] = S.cd;
+  if (!mix) p.st[i] = S.cd;
   p.face = ang;
   ev(room, ['a', Math.round(p.x), Math.round(p.y), p.id, i, +ang.toFixed(2), 1]);
   switch (S.kind) {
@@ -563,6 +578,16 @@ function trySkill(room, p, a) {
       });
       break;
   }
+  return true;
+}
+
+// Habilidade mista: as duas habilidades saem juntas e dividem uma recarga (guardada nos dois slots).
+function trySkillMix(room, p) {
+  if (p.st[0] > 0 || p.st[1] > 0) return;
+  const pair = p.active.slice().sort((x, y) => (x.F.skill.kind === 'dash') - (y.F.skill.kind === 'dash')); // a investida por último
+  let any = false;
+  for (const a of pair) if (trySkill(room, p, a, true)) any = true;
+  if (any) { p.st[0] = p.st[1] = p.mixCd; }
 }
 
 function explode(room, pr) {
@@ -603,7 +628,7 @@ function updatePlayer(room, p) {
   for (let i = 0; i < 2; i++) { if (p.wt[i] > 0) p.wt[i] -= DT; if (p.st[i] > 0) p.st[i] -= DT; }
   if (p.stun > 0) return;
   if (p.mx || p.my) {
-    const sp = BASE_SPEED * (p.slowT > 0 ? 0.6 : 1);
+    const sp = (p.spd || BASE_SPEED) * (p.slowT > 0 ? 0.6 : 1);
     p.x += p.mx * sp * DT; p.y += p.my * sp * DT;
     clampWorld(p);
     p.face = Math.atan2(p.my, p.mx);
@@ -612,9 +637,14 @@ function updatePlayer(room, p) {
     if (p.wt[a.slot] <= 0) {
       const tg = findTarget(room, p, a.F.range, false);
       if (tg) { basicAttack(room, p, a, tg); p.wt[a.slot] = a.F.cd; }
+      else if (a.F.atk === 'proj' || a.F.atk === 'orb') { // arma de longe atira mesmo sem alvo: na direção da mira (cursor) ou para onde o slime olha
+        basicAttack(room, p, a, { e: null, d: 0, ang: p.am ? p.aim : p.face });
+        p.wt[a.slot] = a.F.cd;
+      }
     }
-    if (a.F.skill) trySkill(room, p, a);
+    if (a.F.skill && !p.mixed) trySkill(room, p, a);
   }
+  if (p.mixed) trySkillMix(room, p);
 }
 
 function stepToward(e, tx, ty, speed) {
@@ -622,7 +652,51 @@ function stepToward(e, tx, ty, speed) {
   if (d < 1) return d;
   const s = Math.min(d, speed * DT);
   e.x += (dx / d) * s; e.y += (dy / d) * s;
+  clampWorld(e);
   return d - s;
+}
+
+// Ataques especiais dos monstros comuns: aviso no chão (mesmo desenho do dragão), depois o golpe.
+// shape: self (em volta dele), leap (pula e cai em cima de quem estava marcado), cone, dash (investida em linha), ground (área sob o alvo).
+function mobStartCast(room, m, tg) {
+  const S = m.def.sp, ang = Math.atan2(tg.y - m.y, tg.x - m.x);
+  m.spCd = S.cd; m.face = ang;
+  const c = { t: S.wind, ang, x: tg.x, y: tg.y };
+  m.cast = c;
+  if (S.shape === 'self') ev(room, ['w', Math.round(m.x), Math.round(m.y), 1, 0, S.radius, +S.wind.toFixed(2), 0]);
+  else if (S.shape === 'leap' || S.shape === 'ground') ev(room, ['w', Math.round(c.x), Math.round(c.y), 1, 0, S.radius, +S.wind.toFixed(2), 0]);
+  else ev(room, ['w', Math.round(m.x), Math.round(m.y), 0, +ang.toFixed(2), S.range, +S.wind.toFixed(2), S.width]);
+}
+// distância de um ponto a um segmento (para o tiro de teia, que viaja em linha reta e acerta o primeiro que estiver no caminho)
+function segDist(x0, y0, x1, y1, px, py) {
+  const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / l2));
+  return { d: Math.hypot(px - (x0 + dx * u), py - (y0 + dy * u)), u };
+}
+function mobResolveCast(room, m) {
+  const S = m.def.sp, c = m.cast, key = m.key;
+  m.cast = null; m.atkT = 0.6;
+  const dmg = () => m.def.dmg * S.mul * rnd(0.95, 1.05);
+  const after = (p) => { if (S.stun) stun(p, S.stun); if (S.slow) p.slowT = Math.max(p.slowT || 0, S.slow); };
+  const area = (x, y, R) => room.players.forEach((p) => { if (p.alive && dist(x, y, p.x, p.y) - p.r <= R && hit(room, m, p, dmg(), 'phys')) after(p); });
+  if (S.shape === 'self') { fx(room, 'ms', m.x, m.y, 0, S.radius, key, 1); area(m.x, m.y, S.radius); }
+  else if (S.shape === 'leap' || S.shape === 'ground') {
+    if (S.shape === 'leap') { m.x = c.x; m.y = c.y; clampWorld(m); }
+    fx(room, 'ms', c.x, c.y, 0, S.radius, key, 1); area(c.x, c.y, S.radius);
+  } else if (S.shape === 'shot') {
+    const x1 = m.x + Math.cos(c.ang) * S.range, y1 = m.y + Math.sin(c.ang) * S.range;
+    let best = null, bu = 2;
+    room.players.forEach((p) => { if (!p.alive || p.protectUntil > room.now) return; const q = segDist(m.x, m.y, x1, y1, p.x, p.y); if (q.d <= S.hitR + p.r && q.u < bu) { bu = q.u; best = p; } });
+    fx(room, 'ms', m.x, m.y, c.ang, best ? S.range * bu : S.range, key, 1, best ? 1 : 0);
+    if (best && hit(room, m, best, dmg(), 'phys')) after(best);
+  } else if (S.shape === 'cone') {
+    fx(room, 'ms', m.x, m.y, c.ang, S.range, key, 1, S.width);
+    room.players.forEach((p) => { if (p.alive && inCone(m, p, S.range, c.ang, S.width) && hit(room, m, p, dmg(), 'phys')) after(p); });
+  } else { // dash: avança em linha e atinge quem estiver no caminho
+    const x0 = m.x, y0 = m.y;
+    fx(room, 'ms', x0, y0, c.ang, S.range, key, 1, S.width);
+    room.players.forEach((p) => { if (p.alive && inCone({ x: x0, y: y0 }, p, S.range, c.ang, S.width) && hit(room, m, p, dmg(), 'phys')) after(p); });
+    m.x += Math.cos(c.ang) * S.range * 0.85; m.y += Math.sin(c.ang) * S.range * 0.85; clampWorld(m);
+  }
 }
 
 function updateMob(room, m) {
@@ -633,7 +707,7 @@ function updateMob(room, m) {
   }
   if (m.boss) return updateBoss(room, m);
   if (m.atkT > 0) m.atkT -= DT;
-  if (m.stun > 0) { m.stun -= DT; return; }
+  if (m.stun > 0) { m.stun -= DT; m.cast = null; return; }
   const def = m.def;
   let tg = m.tgt;
   if (tg && (!tg.alive || tg.gone)) tg = null;
@@ -655,8 +729,17 @@ function updateMob(room, m) {
     if (dh < 30) m.returning = false;
     return;
   }
+  if (m.cast) { // preparando o ataque especial: fica parado até o aviso acabar
+    m.cast.t -= DT;
+    if (m.cast.t <= 0) mobResolveCast(room, m);
+    return;
+  }
   if (tg) {
     const d = dist(m.x, m.y, tg.x, tg.y);
+    if (def.sp) {
+      m.spCd = (m.spCd === undefined ? rnd(1, def.sp.cd) : m.spCd) - DT;
+      if (m.spCd <= 0 && d <= def.sp.trigger + tg.r && m.atkT <= 0) { mobStartCast(room, m, tg); return; }
+    }
     if (d <= m.r + tg.r + 4) {
       if (m.atkT <= 0) {
         ev(room, ['k', Math.round(m.x), Math.round(m.y), m.id, +Math.atan2(tg.y - m.y, tg.x - m.x).toFixed(2)]); // o monstro dá o bote (animação)
@@ -1013,8 +1096,23 @@ function onMessage(ws, raw) {
         if (!D.meetsReq(it, p.stats)) { send(p, { t: 'toast', m: 'Requisito não cumprido: ' + D.ATTR_NAMES[it.attr] + ' ' + it.req }); break; }
         if (slot === 'a') p.equip.a = id; else p.equip.w[slot === 'w0' ? 0 : 1] = id;
       }
+      const mixBefore = p.mixName;
       recalc(p);
       p.saveDirty = true;
+      if (p.mixed && p.mixName !== mixBefore) send(p, { t: 'toast', m: 'Habilidade mista: ' + p.mixName });
+      send(p, meMsg(p));
+      break;
+    }
+    case 'alloc': { // gasta pontos de atributo: { k: 'str'|'dex'|'man'|'hlt', n: quantidade }
+      if (!p.alive || !D.ATTRS.includes(m.k)) break;
+      let n = Math.floor(Number(m.n));
+      if (!(n >= 1)) break;
+      n = Math.min(n, p.points, D.ATTR_MAX - p.stats[m.k]);
+      if (n < 1) break;
+      const before = p.maxHp;
+      p.stats[m.k] += n; p.points -= n;
+      recalc(p);
+      p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - before)); // mais Saúde cura na mesma medida
       send(p, meMsg(p));
       break;
     }

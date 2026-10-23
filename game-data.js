@@ -10,6 +10,7 @@ WORLD.cx = WORLD.w / 2;
 WORLD.cy = WORLD.h / 2;
 WORLD.rx = WORLD.w / 2 - 300;
 WORLD.ry = WORLD.h / 2 - 240;
+WORLD.wall = 0.93; // limite andável (fração da elipse): ali começa a muralha de árvores da borda; ninguém passa e nenhum monstro nasce além disso
 
 // Faixas de nível das armas (3, 6, 10, 15 e 20): requisito de atributo, multiplicador e raridade.
 // A faixa 6 (mítica) só vem do dragão: requisito logo acima da média de quem chega ao nível 20.
@@ -21,6 +22,8 @@ const TIER_COLORS = ['#b8c0c4', '#6fd16f', '#4aa3ff', '#b06cff', '#ffb020', '#ff
 const MYTHIC_TIER = 6;
 
 const ATTRS = ['str', 'dex', 'man', 'hlt'];
+const POINTS_PER_LEVEL = 8; // pontos de atributo ganhos a cada nível, distribuídos pelo jogador
+const ATTR_MAX = 60;        // máximo em um único atributo
 const ATTR_NAMES = { str: 'Força', dex: 'Destreza', man: 'Mana', hlt: 'Saúde', best: 'Maior atributo' };
 
 // Os dois primeiros níveis são rápidos: 1 cogumelo (5 XP) leva ao nível 2 e mais 2 cogumelos levam ao nível 3.
@@ -90,8 +93,8 @@ const FAMILIES = {
 // Teto de dano por golpe. Nenhum golpe de uma arma (básico, habilidade ou habilidade fundida, que dá +50%) passa de 1/N da vida do
 // monstro da faixa dela, então o monstro de faixa equivalente leva pelo menos N golpes para morrer:
 //   fm = corpo a corpo rápida (1/5) | sm = corpo a corpo lenta (1/3) | fr = à distância rápida (1/7) | sr = à distância lenta (1/5)
-// Quem calibra é o multiplicador (mult e skill.mult), não uma trava no código: o dano sobe com o atributo da arma (cerca de 2 por nível,
-// já que cada atributo rola 1d3), e a vida do monstro sobe junto com a faixa. REF_ATTR é o atributo esperado no fim do uso de cada faixa
+// Quem calibra é o multiplicador (mult e skill.mult), não uma trava no código: o dano sobe com o atributo da arma (em média cerca de 2 por nível se o jogador espalhar os
+// 8 pontos por nível; concentrando, vai até ATTR_MAX), e a vida do monstro sobe junto com a faixa. REF_ATTR é o atributo esperado no fim do uso de cada faixa
 // (1 a 6). A faixa mítica usa a aranha-véu (o monstro comum mais forte) e só a habilidade fundida passa um pouco do teto (cerca de 20%);
 // o dragão fica de fora. Confira com `node tools/calibrar-dano.js` e com o teste de regras.
 const MIN_HITS = { fm: 5, sm: 3, fr: 7, sr: 5 };
@@ -147,12 +150,14 @@ const CATALOG_SIZE = Object.keys(ITEMS).length - BASE_ITEMS.length; // todos os 
 const MOBS = {
   // hp/dmg calibrados com o simulador (tools/simular.js): um jogador com o equipamento da faixa mata o monstro do anel em ~7 s
   // e perde ~20% da vida na luta; sem o equipamento da faixa, a luta fica perigosa. Anéis mais fortes ficam mais perto do centro.
-  cogumelo: { name: 'Cogumelo-fungo', hp: 30, dmg: 3, speed: 45, aggro: 110, r: 20, xp: 5, tier: 1, atkCd: 1.4 },
-  coelho: { name: 'Coelho-musgo', hp: 278, dmg: 4, speed: 115, aggro: 150, r: 18, xp: 10, tier: 1, atkCd: 1.1 },
-  lobo: { name: 'Lobo-raiz', hp: 440, dmg: 7, speed: 150, aggro: 150, r: 22, xp: 20, tier: 2, atkCd: 1.05 },
-  javali: { name: 'Javali-espinho', hp: 951, dmg: 15, speed: 140, aggro: 160, r: 28, xp: 35, tier: 3, atkCd: 1.2 },
-  broto: { name: 'Broto ancião', hp: 1877, dmg: 32, speed: 65, aggro: 170, r: 34, xp: 55, tier: 4, atkCd: 1.4 },
-  aranha: { name: 'Aranha-véu', hp: 3300, dmg: 36, speed: 175, aggro: 170, r: 26, xp: 80, tier: 5, atkCd: 1.1, slow: 1.5 },
+  cogumelo: { name: 'Cogumelo-fungo', hp: 30, dmg: 3, speed: 45, aggro: 110, r: 20, xp: 5, tier: 1, atkCd: 1.4, sp: { name: 'Esporos', shape: 'self', radius: 95, trigger: 80, wind: 0.8, cd: 6, mul: 1.3, slow: 2 } },
+  coelho: { name: 'Coelho-musgo', hp: 278, dmg: 4, speed: 115, aggro: 150, r: 18, xp: 10, tier: 1, atkCd: 1.1, sp: { name: 'Pulo pesado', shape: 'leap', radius: 80, trigger: 190, wind: 0.7, cd: 5, mul: 1.6, stun: 0.5 } },
+  lobo: { name: 'Lobo-raiz', hp: 440, dmg: 7, speed: 150, aggro: 150, r: 22, xp: 20, tier: 2, atkCd: 1.05, sp: { name: 'Garras duplas', shape: 'cone', range: 120, width: 1.4, trigger: 90, wind: 0.55, cd: 4.5, mul: 1.7 } },
+  javali: { name: 'Javali-espinho', hp: 951, dmg: 15, speed: 140, aggro: 160, r: 28, xp: 35, tier: 3, atkCd: 1.2, sp: { name: 'Investida', shape: 'dash', range: 280, width: 0.5, trigger: 260, wind: 0.8, cd: 6, mul: 2, stun: 0.6 } },
+  broto: { name: 'Broto ancião', hp: 1877, dmg: 32, speed: 65, aggro: 170, r: 34, xp: 55, tier: 4, atkCd: 1.4, sp: { name: 'Raízes', shape: 'ground', radius: 120, trigger: 220, wind: 1.0, cd: 7, mul: 1.6, stun: 0.9 } },
+  aranha: { name: 'Aranha-véu', hp: 3300, dmg: 36, speed: 175, aggro: 170, r: 26, xp: 80, tier: 5, atkCd: 1.1, slow: 1.5, sp: { name: 'Tiro de teia', shape: 'shot', range: 380, width: 0.14, hitR: 30, trigger: 340, wind: 0.6, cd: 6, mul: 0.9, slow: 3.5 } },
+  // Árvore anciã: guardiã do anel mais próximo do dragão. Lenta e pesada: mesma vida da aranha (o teto de dano da faixa 5 não muda), bate mais forte.
+  arvore: { name: 'Árvore anciã', hp: 3300, dmg: 44, speed: 70, aggro: 180, r: 44, xp: 95, tier: 5, atkCd: 1.5, sp: { name: 'Galho pesado', shape: 'ground', radius: 150, trigger: 260, wind: 1.2, cd: 8, mul: 2.2, stun: 1.0 } },
   // Chefe: dorme no centro e só age depois de levar golpes. Sopro de fogo e pancada no chão têm aviso antes de sair.
   dragao: {
     name: 'Dragão ancestral', hp: 75000, dmg: 200, speed: 120, aggro: 0, r: 80, xp: 1200, tier: 6, atkCd: 1.7, boss: true,
@@ -167,7 +172,7 @@ const MOBS = {
 // leash: distância máxima até quem ele persegue. rage: abaixo dessa fração de vida ele fica mais rápido e agressivo.
 // scale: cada jogador extra que o está machucando soma essa fração à vida dele (até scaleCap jogadores), para um grupo grande não passar por cima.
 // armorItem/armorDrop: além da arma mítica, quem vence ainda tem esta chance de levar o peitoral do dragão (se ainda não tiver).
-const BOSS = { mob: 'dragao', respawn: 300, minShare: 0.06, clear: 330, minLevel: 20, leash: 1500, rage: 0.3, scale: 0.2, scaleCap: 12, armorItem: 'draco_6', armorDrop: 0.5 };
+const BOSS = { mob: 'dragao', respawn: 300, minShare: 0.06, clear: 270, minLevel: 20, leash: 1500, rage: 0.3, scale: 0.2, scaleCap: 12, armorItem: 'draco_6', armorDrop: 0.5 };
 // Zonas em anéis elípticos, da borda (fraca) para a praça do centro (forte). nd = distância normalizada ao centro.
 const ZONES = [
   { min: 0.80, max: 1.00, mob: 'cogumelo', weight: 0.28 },
@@ -175,7 +180,8 @@ const ZONES = [
   { min: 0.46, max: 0.62, mob: 'lobo', weight: 0.18 },
   { min: 0.34, max: 0.46, mob: 'javali', weight: 0.14 },
   { min: 0.22, max: 0.34, mob: 'broto', weight: 0.10 },
-  { min: 0.09, max: 0.22, mob: 'aranha', weight: 0.08 }
+  { min: 0.155, max: 0.22, mob: 'aranha', weight: 0.07 },
+  { min: 0.08, max: 0.155, mob: 'arvore', weight: 0.06 }
 ];
 // Missões: as 9 armas lendárias (faixa 5) só vêm de missões, nunca de drops.
 // kill/pk acumulam entre as vidas. survive/nodamage/onehit/level contam só na vida atual.
@@ -220,6 +226,21 @@ function skillDamage(item, stats) {
   if (!F.skill) return 0;
   return Math.max(1, Math.round((4 + stats[F.attr]) * F.skill.mult * TIER_MULT[item.tier - 1]));
 }
+// Habilidade mista: duas armas DIFERENTES (cada uma com habilidade) disparam as duas habilidades juntas, com um nome novo e uma recarga só.
+// O nome junta uma palavra de cada arma (na ordem de FAMILIES, então a mesma dupla sempre dá o mesmo nome); a recarga é 90% da média das duas.
+const MIX_WORDS = {
+  martelo: ['Tremor', 'Esmagador'], maca: ['Impacto', 'Sagrado'], espada: ['Lâmina', 'Cortante'], rapieira: ['Estocada', 'Veloz'],
+  arco: ['Flecha', 'Certeira'], chicote: ['Açoite', 'Selvagem'], varinha: ['Faísca', 'Arcana'], cajado: ['Orbe', 'Místico'], sinos: ['Canção', 'Sagrada']
+};
+const MIX_DMG = 1.1;
+function mixName(famA, famB) {
+  const order = Object.keys(FAMILIES);
+  const pair = order.indexOf(famA) <= order.indexOf(famB) ? [famA, famB] : [famB, famA];
+  return MIX_WORDS[pair[0]][0] + ' ' + MIX_WORDS[pair[1]][1];
+}
+function mixCd(famA, famB) {
+  return Math.round((FAMILIES[famA].skill.cd + FAMILIES[famB].skill.cd) / 2 * 0.9 * 10) / 10;
+}
 // Vida do monstro mais forte da faixa (a referência do teto de dano) e o teto de um golpe de uma arma dessa faixa.
 function mobHpOfTier(tier) {
   const regular = Object.keys(MOBS).filter((k) => !MOBS[k].boss);
@@ -233,6 +254,20 @@ function armorStats(item, stats) {
   const tm = item.tier === 0 ? 0.375 : TIER_MULT[item.tier - 1];
   const res = item.tier === 0 ? 0 : A.res != null ? A.res : Math.min(RES_CAP, RES_PER_TIER * item.tier);
   return { hp: Math.round(stats.hlt * A.hp * tm), rp: A.rp ? res : 0, rm: A.rm ? res : 0 };
+}
+// Velocidade ao andar (px/s). Quanto menor o slime (nível baixo), mais rápido: de +10% no nível 1 a -8% no nível 20.
+// Armas de perto deixam um pouco mais rápido que armas de longe: só corpo a corpo +6%, uma de cada +3%, só à distância +0%.
+// fams = famílias das armas ativas (ex.: ['faca', 'arco']). O servidor e o cliente usam esta mesma conta.
+const MOVE_BASE = 170, MOVE_LVL_MAX = 1.10, MOVE_LVL_MIN = 0.92, MELEE_ATK = ['single', 'splash', 'arc', 'ring'];
+function moveSpeed(level, fams) {
+  const t = Math.max(0, Math.min(1, ((Number(level) || 1) - 1) / (MAX_LEVEL - 1)));
+  let sp = MOVE_BASE * (MOVE_LVL_MAX + (MOVE_LVL_MIN - MOVE_LVL_MAX) * t);
+  const list = (fams || []).filter((f) => FAMILIES[f]);
+  if (list.length) {
+    const melee = list.filter((f) => MELEE_ATK.includes(FAMILIES[f].atk)).length;
+    sp *= 1 + 0.06 * (melee / list.length);
+  }
+  return sp;
 }
 function meetsReq(item, stats) {
   if (!item) return false;
@@ -306,14 +341,14 @@ function skinDecode(n) {
 function publicData() {
   return {
     MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS,
-    ATTR_NAMES, FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, RES_PER_TIER, RES_CAP, QUESTS,
+    ATTR_NAMES, FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, RES_PER_TIER, RES_CAP, QUESTS, POINTS_PER_LEVEL, ATTR_MAX,
     ITEM_LIMIT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, SKIN_SLOTS, SKINS, SKIN_PACKS
   };
 }
 
 module.exports = {
-  MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS, ATTRS, ATTR_NAMES,
+  MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS, ATTRS, ATTR_NAMES, POINTS_PER_LEVEL, ATTR_MAX,
   FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, QUESTS, MOB_COUNT, MOB_RESPAWN, DROP_WEAPON, DROP_ARMOR,
-  DROP_MAX_TIER, DROP_MAX_TIER_ARMOR, ITEM_LIMIT, PLAYER_REGEN, PLAYER_STUN_MULT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, TUNE, ONEHIT_MAX_HITS, MIN_HITS, REF_ATTR, mobHpOfTier, hitCap, howToGet, xpNeed, attrOf, weaponDamage, skillDamage, armorStats, meetsReq, publicData,
+  DROP_MAX_TIER, DROP_MAX_TIER_ARMOR, ITEM_LIMIT, PLAYER_REGEN, PLAYER_STUN_MULT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, TUNE, ONEHIT_MAX_HITS, MIN_HITS, REF_ATTR, mobHpOfTier, hitCap, howToGet, mixName, mixCd, MIX_DMG, xpNeed, attrOf, weaponDamage, skillDamage, armorStats, meetsReq, moveSpeed, MOVE_BASE, publicData,
   SKIN_SLOTS, SKINS, SKIN_PACKS, skinEmpty, skinClean, skinCode, skinDecode
 };

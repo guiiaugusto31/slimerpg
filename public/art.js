@@ -735,8 +735,13 @@
     var mx = (sx + hx) / 2, my = (sy + hy) / 2, side = (nx * (mx - bx) + ny * (my - by)) >= 0 ? 1 : -1;
     var cx = mx + nx * side * len * 0.2, cy = my + ny * side * len * 0.2 + r * 0.1;
     var w0 = r * 0.44, w1 = r * 0.32, grow = Math.max(2, r * 0.11);
-    taper(g, sx, sy, cx, cy, hx, hy, w0, w1, dark(color, 0.82), grow);
-    taper(g, sx, sy, cx, cy, hx, hy, w0, w1, color, 0);
+    var inkA = 'rgba(30,18,24,0.9)';
+    taper(g, sx, sy, cx, cy, hx, hy, w0, w1, inkA, grow * 1.5);                    // contorno escuro, no traço dos monstros
+    var ag = g.createLinearGradient(sx, sy, hx, hy); ag.addColorStop(0, light(color, 0.18)); ag.addColorStop(0.55, color); ag.addColorStop(1, dark(color, 0.14));
+    taper(g, sx, sy, cx, cy, hx, hy, w0, w1, ag, 0);
+    g.fillStyle = color; g.beginPath(); g.arc(sx, sy, w0 * 0.5, 0, 7); g.fill();       // ombro redondo, se funde com o corpo
+    g.strokeStyle = rgba(dark(color, 0.3), 0.45); g.lineWidth = Math.max(1.2, r * 0.05); g.lineCap = 'round'; // dobrinha do cotovelo
+    g.beginPath(); g.arc(cx, cy, w1 * 0.32, side > 0 ? 0.3 : 2.2, side > 0 ? 2.4 : 4.3); g.stroke();
     g.save(); g.strokeStyle = rgba('#ffffff', 0.32); g.lineWidth = Math.max(1.4, r * 0.1); g.lineCap = 'round';
     g.beginPath(); g.moveTo(sx + nx * -side * w0 * 0.18, sy + ny * -side * w0 * 0.18 - r * 0.04); g.quadraticCurveTo(cx + nx * -side * w0 * 0.14, cy + ny * -side * w0 * 0.14 - r * 0.04, hx + nx * -side * w1 * 0.12, hy + ny * -side * w1 * 0.12); g.stroke();
     g.restore();
@@ -761,11 +766,15 @@
   }
   // Mão: bolinha de gelatina (vai por cima do cabo da arma).
   function drawHand(g, x, y, color, r) {
-    var rad = r * 0.22;
-    g.fillStyle = dark(color, 0.82); g.beginPath(); g.arc(x, y, rad + Math.max(1.8, r * 0.1), 0, 7); g.fill();
+    var rad = r * 0.24;
+    g.fillStyle = 'rgba(30,18,24,0.9)'; g.beginPath(); g.arc(x, y, rad + Math.max(2, r * 0.1), 0, 7); g.fill();
+    g.beginPath(); g.arc(x + rad * 0.55, y - rad * 0.75, rad * 0.5 + Math.max(2, r * 0.09), 0, 7); g.fill(); // polegar (contorno)
+    g.fillStyle = color; g.beginPath(); g.arc(x + rad * 0.55, y - rad * 0.75, rad * 0.5, 0, 7); g.fill();
     var gr = g.createRadialGradient(x - rad * 0.35, y - rad * 0.4, rad * 0.1, x, y, rad * 1.1); gr.addColorStop(0, light(color, 0.5)); gr.addColorStop(0.6, color); gr.addColorStop(1, dark(color, 0.22));
     g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill();
-    g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(x - rad * 0.3, y - rad * 0.35, rad * 0.28, rad * 0.18, -0.6, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.ellipse(x - rad * 0.3, y - rad * 0.35, rad * 0.28, rad * 0.18, -0.6, 0, 7); g.fill();
+    g.strokeStyle = rgba(dark(color, 0.35), 0.55); g.lineWidth = Math.max(1, r * 0.04); g.lineCap = 'round'; // dedinhos agarrando o cabo
+    for (var q = -1; q <= 1; q++) { g.beginPath(); g.moveTo(x - rad * 0.2 + q * rad * 0.1, y + rad * 0.15 + q * rad * 0.3); g.lineTo(x + rad * 0.5, y + rad * 0.3 + q * rad * 0.3); g.stroke(); }
   }
 
   /* ---------- monstros (reserva procedural, vistos de cima) ---------- */
@@ -888,6 +897,55 @@
       g.beginPath(); g.moveTo(0, -r * 1.1); g.quadraticCurveTo(bx * 0.4, -r * 1.35, bx, -r * 1.58); g.stroke();
       ell(g, bx - r * 0.17, -r * 1.62, r * 0.17, r * 0.09, '#9be05a', -0.6); ell(g, bx + r * 0.17, -r * 1.62, r * 0.17, r * 0.09, '#88d04a', 0.6);
       ell(g, bx - r * 0.2, -r * 1.64, r * 0.08, r * 0.035, 'rgba(255,255,255,.35)', -0.6);
+    },
+    // Árvore anciã: carvalho gigante e antigo, copa dourada de outono, rosto de brasa no tronco e braços de galho pesados.
+    arvore: function (g, r, t) {
+      var sw = Math.sin(t * 1.1) * r * 0.04, i;
+      [[-0.6, 0.55, -1.5, 0.95], [-0.25, 0.65, -0.7, 1.05], [0.25, 0.65, 0.7, 1.05], [0.6, 0.55, 1.5, 0.95]].forEach(function (p) {
+        taper(g, p[0] * r, p[1] * r, p[2] * r, p[1] * r, p[2] * r, p[3] * r, r * 0.4, r * 0.08, '#1a110a', r * 0.04);
+        taper(g, p[0] * r, p[1] * r, p[2] * r, p[1] * r, p[2] * r, p[3] * r, r * 0.35, r * 0.05, '#4a3520', 0);
+      });
+      [-1, 1].forEach(function (s) {
+        taper(g, s * r * 0.5, -r * 0.3, s * r * 1.3, -r * 0.2, s * r * 1.45 + sw * s, -r * 0.95, r * 0.34, r * 0.08, '#1a110a', r * 0.04);
+        taper(g, s * r * 0.5, -r * 0.3, s * r * 1.3, -r * 0.2, s * r * 1.45 + sw * s, -r * 0.95, r * 0.29, r * 0.05, '#5b4228', 0);
+        ell(g, s * r * 1.45 + sw * s, -r * 1.0, r * 0.3, r * 0.17, '#c98a2e', -s * 0.6);
+        ell(g, s * r * 1.25 + sw * s, -r * 0.9, r * 0.22, r * 0.12, '#e0b04a', s * 0.5);
+      });
+      var tg = g.createLinearGradient(-r * 0.9, 0, r * 0.9, 0);
+      tg.addColorStop(0, '#24170d'); tg.addColorStop(0.3, '#6e5032'); tg.addColorStop(0.65, '#533b25'); tg.addColorStop(1, '#1d130b');
+      g.fillStyle = tg; g.strokeStyle = '#150d07'; g.lineWidth = Math.max(1.5, r * 0.06); g.lineJoin = 'round';
+      g.beginPath();
+      g.moveTo(-r * 0.85, r * 0.7);
+      g.bezierCurveTo(-r * 0.95, r * 0.1, -r * 0.6, -r * 0.3, -r * 0.66, -r * 0.8);
+      g.bezierCurveTo(-r * 0.3, -r * 1.0, r * 0.3, -r * 1.0, r * 0.66, -r * 0.8);
+      g.bezierCurveTo(r * 0.6, -r * 0.3, r * 0.95, r * 0.1, r * 0.85, r * 0.7);
+      g.bezierCurveTo(r * 0.4, r * 0.85, -r * 0.4, r * 0.85, -r * 0.85, r * 0.7);
+      g.closePath(); g.fill(); g.stroke();
+      g.strokeStyle = 'rgba(15,9,4,.5)'; g.lineWidth = Math.max(1, r * 0.04); g.lineCap = 'round';
+      [-0.6, -0.32, 0.3, 0.58].forEach(function (x, k) { g.beginPath(); g.moveTo(x * r, -r * 0.7); g.quadraticCurveTo((x + 0.08 * (k % 2 ? 1 : -1)) * r, r * 0.05, (x + 0.05) * r, r * 0.7); g.stroke(); });
+      ell(g, -r * 0.6, r * 0.52, r * 0.3, r * 0.15, 'rgba(78,128,62,.95)'); ell(g, r * 0.55, -r * 0.3, r * 0.2, r * 0.1, 'rgba(78,128,62,.95)');
+      // runas de brasa na casca
+      var pu = 0.55 + 0.35 * Math.sin(t * 2.4);
+      g.strokeStyle = 'rgba(255,180,70,' + pu + ')'; g.lineWidth = Math.max(1.2, r * 0.04);
+      g.beginPath(); g.moveTo(-r * 0.62, r * 0.12); g.lineTo(-r * 0.5, r * 0.3); g.lineTo(-r * 0.62, r * 0.46); g.moveTo(r * 0.62, r * 0.12); g.lineTo(r * 0.5, r * 0.3); g.lineTo(r * 0.62, r * 0.46); g.stroke();
+      // rosto
+      ell(g, -r * 0.28, -r * 0.34, r * 0.2, r * 0.13, '#120a04', 0.3); ell(g, r * 0.28, -r * 0.34, r * 0.2, r * 0.13, '#120a04', -0.3);
+      [-1, 1].forEach(function (s) {
+        var ex = s * r * 0.28, ey = -r * 0.34, gl = g.createRadialGradient(ex, ey, 0, ex, ey, r * 0.32);
+        gl.addColorStop(0, 'rgba(255,215,110,.9)'); gl.addColorStop(0.45, 'rgba(255,160,50,.4)'); gl.addColorStop(1, 'rgba(255,130,30,0)');
+        g.fillStyle = gl; g.beginPath(); g.arc(ex, ey, r * 0.32, 0, 7); g.fill();
+        ell(g, ex, ey, r * 0.11, r * 0.07, '#fff0b0', s * -0.3);
+        g.strokeStyle = '#120a05'; g.lineWidth = Math.max(1.5, r * 0.08);
+        g.beginPath(); g.moveTo(s * r * 0.55, -r * 0.62); g.lineTo(s * r * 0.06, -r * 0.44); g.stroke();
+      });
+      g.fillStyle = '#0e0702';
+      g.beginPath(); g.moveTo(-r * 0.34, r * 0.02); g.lineTo(-r * 0.17, r * 0.1); g.lineTo(0, r * 0.01); g.lineTo(r * 0.17, r * 0.1); g.lineTo(r * 0.34, r * 0.02);
+      g.quadraticCurveTo(0, r * 0.46, -r * 0.34, r * 0.02); g.fill();
+      // copa enorme
+      [[-0.75, -1.0, 0.5, 0.3, -0.5, '#8a5a1c'], [0.75, -1.0, 0.5, 0.3, 0.5, '#8a5a1c'], [0, -1.2, 0.65, 0.36, 0, '#a8701f'],
+        [-0.5, -1.15, 0.5, 0.3, -0.3, '#c98a2e'], [0.5, -1.15, 0.5, 0.3, 0.3, '#c98a2e'], [0, -1.0, 0.74, 0.32, 0, '#d89a35'],
+        [-0.28, -1.32, 0.34, 0.2, -0.4, '#f0c24f'], [0.32, -1.28, 0.3, 0.18, 0.4, '#f0c24f']].forEach(function (l) { ell(g, l[0] * r, l[1] * r, l[2] * r, l[3] * r, l[5], l[4]); });
+      for (i = 0; i < 4; i++) { var u = ((t * 0.25 + i / 4) % 1); g.fillStyle = 'rgba(240,190,70,' + (0.8 * (1 - u)) + ')'; g.beginPath(); g.ellipse(-r * 0.9 + i * r * 0.6 + Math.sin(t + i) * r * 0.1, -r * 1.0 + u * r * 1.7, r * 0.06, r * 0.03, u * 6, 0, 7); g.fill(); }
     },
     // Aranha-véu: aranha roxa com marca de ampulheta, olhos de brasa, presas com veneno e um véu de teia por cima.
     aranha: function (g, r, t) {
@@ -1051,8 +1109,8 @@
     }
   };
   // Para onde a imagem do monstro olha: 1 = direita, -1 = esquerda, 0 = de frente/de cima (não espelha).
-  var FACING = { cogumelo: 0, coelho: 0, lobo: -1, javali: -1, broto: 0, aranha: 0, dragao: 1 };
-  var MOB_COLORS = { cogumelo: '#b44a3c', coelho: '#6c8466', lobo: '#555b61', javali: '#6b4733', broto: '#3d7040', aranha: '#3a2858', dragao: '#a8322e' };
+  var FACING = { cogumelo: 0, coelho: 0, lobo: -1, javali: -1, broto: 0, aranha: 0, arvore: 0, dragao: 1 };
+  var MOB_COLORS = { cogumelo: '#b44a3c', coelho: '#6c8466', lobo: '#555b61', javali: '#6b4733', broto: '#3d7040', aranha: '#3a2858', arvore: '#8a6a2a', dragao: '#a8322e' };
   /* Dragão ilustrado: três poses (em pé, dormindo, rugindo). Largura em múltiplos de r e posição da boca (fração do desenho).
      Os avisos de sopro e pancada, a fúria, o sono e a fumaça são desenhados por cima, então o jogador continua lendo o que o chefe vai fazer. */
   var DRAGON_POSE = {
@@ -1480,7 +1538,7 @@
      e guardado. Os enfeites saem de "células" com sorteio fixo, então os blocos se encaixam sem emenda e o mapa é sempre igual. */
   var TILE = 640, TSC = 0.7, CELL = 128, MARGIN = 170, tiles = {}, tileKeys = [], MAX_TILES = 48;
   var LAIR = (GD.BOSS && GD.BOSS.clear) || 330;
-  var GROUND = [[0, '#3a3128'], [0.09, '#2e2a2a'], [0.16, '#2a2433'], [0.28, '#27311f'], [0.4, '#32331d'], [0.54, '#1f3223'], [0.71, '#2e4a2b'], [0.9, '#1b2f1f'], [1.0, '#0f1d14'], [1.08, '#0a130d']];
+  var GROUND = [[0, '#7a6a58'], [0.09, '#6d6672'], [0.16, '#6a6088'], [0.28, '#5f8a3c'], [0.4, '#7d8d3e'], [0.54, '#4f9a47'], [0.71, '#62b04c'], [0.9, '#3f8f45'], [1.0, '#2b6b3b'], [1.08, '#1a4a2a']];
   function hash2(a, b, s) {
     var h = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(s | 0, 144665)) | 0;
     h = Math.imul(h ^ (h >>> 13), 1274126177); h = Math.imul(h ^ (h >>> 16), 2246822519);
@@ -1491,7 +1549,7 @@
   function paintTile(g, tx, ty) {
     var TAU = Math.PI * 2, i, k;
     g.setTransform(TSC, 0, 0, TSC, -tx * TSC, -ty * TSC);
-    g.fillStyle = '#060d09'; g.fillRect(tx - 2, ty - 2, TILE + 4, TILE + 4);
+    g.fillStyle = '#10301b'; g.fillRect(tx - 2, ty - 2, TILE + 4, TILE + 4);
     g.save(); g.translate(W.cx, W.cy); g.scale(1, W.ry / W.rx);
     var R0 = W.rx * 1.08, rg = g.createRadialGradient(0, 0, 0, 0, 0, R0);
     GROUND.forEach(function (s) { rg.addColorStop(Math.min(1, s[0] / 1.08), s[1]); });
@@ -1507,7 +1565,7 @@
         for (i = 0; i < 20; i++) { x = px(); y = py(); if (ndist(x, y) < 1.0) L.grass.push([x, y, ['#4d7040', '#3b5c33', '#5d8348', '#2f4a2b'][(R() * 4) | 0], 1.2 + R() * 1.4, (R() - 0.5) * 7, 5 + R() * 9, 0.25 + R() * 0.35]); }
         if (R() < 0.7) { x = px(); y = py(); if (ndist(x, y) < 1.0) L.small.push(['stone', x, y, 4 + R() * 9, 3 + R() * 6, R() * 3, 0.55 + R() * 0.3]); }
         var fl = n0 > 0.62 && n0 < 0.8 ? 1.6 : 0.5;
-        for (i = 0; R() < fl - i * 0.7 && i < 3; i++) { x = px(); y = py(); if (ndist(x, y) < 1.0) L.small.push(['flower', x, y, 2 + R() * 1.6, ['#d9d37a', '#c58fd6', '#e9eef0', '#e89a6b'][(R() * 4) | 0]]); }
+        for (i = 0; R() < fl - i * 0.7 && i < 3; i++) { x = px(); y = py(); if (ndist(x, y) < 1.0) L.small.push(['flower', x, y, 2 + R() * 1.6, ['#ffd84a', '#d98ae6', '#ffffff', '#ff9a6b', '#ff7fa8', '#8ec5ff'][(R() * 4) | 0]]); }
         if (R() < 0.05) { x = px(); y = py(); if (ndist(x, y) < 0.98) L.small.push(['log', x, y, R() * 3, 60 + R() * 70]); }
         if (n0 > 0.8 && n0 < 1.0) { for (i = 0; i < 2 && R() < 0.65; i++) { x = px(); y = py(); if (ndist(x, y) < 1.0) L.ring.push(['shroom', x, y, 0.7 + R() * 0.9]); } }
         else if (n0 > 0.46 && n0 < 0.62) { for (i = 0; i < 2 && R() < 0.7; i++) { x = px(); y = py(); L.ring.push(['fern', x, y, 0.7 + R() * 0.8, R() * 6.28]); } }
@@ -1521,25 +1579,74 @@
       if (n0 > 1.5 && R() < 0.45) L.tree.push([px(), py(), 70 + R() * 80, 9]);
       if (n0 > 1.0 && n0 < 1.55 && R() < 0.035) L.tree.push([px(), py(), 170 + R() * 40, 8]); // árvore anciã (rara)
     }
-    L.patch.forEach(function (o) { g.fillStyle = rgba(o[5], o[6]); g.beginPath(); g.ellipse(o[0], o[1], o[2], o[3], o[4], 0, 7); g.fill(); });
-    g.lineCap = 'round';
-    L.grass.forEach(function (o) { g.strokeStyle = rgba(o[2], o[6]); g.lineWidth = o[3]; g.beginPath(); g.moveTo(o[0], o[1]); g.lineTo(o[0] + o[4], o[1] - o[5]); g.stroke(); });
+    var OUTL = '#0c2214';
+    // manchas de grama clara e escura, com borda suave
+    L.patch.forEach(function (o) {
+      var lite = o[5] === '#3b5a30';
+      g.fillStyle = lite ? 'rgba(150,225,100,' + (o[6] * 1.8) + ')' : 'rgba(40,95,50,' + (o[6] * 2.2) + ')';
+      g.beginPath(); g.ellipse(o[0], o[1], o[2], o[3], o[4], 0, 7); g.fill();
+    });
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    // tufos de grama: três folhas com contorno escuro, como o traço dos monstros
+    L.grass.forEach(function (o, idx) {
+      if (idx % 4) return;
+      var x = o[0], y = o[1], h = o[5] * 1.7, w = o[4] * 1.5, i2;
+      for (i2 = 0; i2 < 2; i2++) {
+        g.strokeStyle = i2 ? ['#8ad65a', '#6cc04d', '#a4e36a'][idx % 3] : OUTL; g.lineWidth = i2 ? 2.6 : 5.2;
+        g.beginPath(); g.moveTo(x - 5, y); g.quadraticCurveTo(x - 6 + w * 0.3, y - h * 0.6, x - 8 + w, y - h * 0.8);
+        g.moveTo(x, y); g.quadraticCurveTo(x + w * 0.2, y - h * 0.7, x + w * 0.5, y - h * 1.15);
+        g.moveTo(x + 5, y); g.quadraticCurveTo(x + 6 + w * 0.2, y - h * 0.5, x + 9 + w * 0.3, y - h * 0.7); g.stroke();
+      }
+    });
     L.ring.forEach(function (o) {
-      var x = o[1], y = o[2], s = o[3];
+      var x = o[1], y = o[2], s = o[3] * 1.7;
       switch (o[0]) {
-        case 'shroom': ell(g, x, y + 3 * s, 3 * s, 4 * s, '#d8ccb0'); ell(g, x, y, 7 * s, 5 * s, '#7a2f2a'); ell(g, x - 2 * s, y - 1 * s, 1.6 * s, 1.2 * s, 'rgba(240,230,210,.8)'); break;
-        case 'fern': g.strokeStyle = rgba('#3f6a38', 0.7); g.lineWidth = 1.6; for (k = -3; k <= 3; k++) { g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(o[4] + k * 0.28) * 10 * s, y + Math.sin(o[4] + k * 0.28) * 10 * s - 6 * s, x + Math.cos(o[4] + k * 0.3) * 20 * s, y + Math.sin(o[4] + k * 0.3) * 20 * s - 4 * s); g.stroke(); } break;
-        case 'mud': ell(g, x, y, s, s * 0.55, 'rgba(46,34,22,.7)', o[4]); ell(g, x - s * 0.15, y - s * 0.12, s * 0.5, s * 0.2, 'rgba(120,100,70,.28)', o[4]); break;
-        case 'thorn': g.fillStyle = rgba('#27431f', 0.9); for (k = 0; k < 9; k++) { var ta = k * 0.7; g.beginPath(); g.moveTo(x + Math.cos(ta - 0.18) * 5 * s, y + Math.sin(ta - 0.18) * 4 * s); g.lineTo(x + Math.cos(ta) * 17 * s, y + Math.sin(ta) * 13 * s); g.lineTo(x + Math.cos(ta + 0.18) * 5 * s, y + Math.sin(ta + 0.18) * 4 * s); g.fill(); } ell(g, x, y, 6 * s, 5 * s, '#1c3317'); break;
-        case 'root': g.strokeStyle = rgba('#2c2016', 0.85); g.lineWidth = 5; g.beginPath(); g.moveTo(x, y); g.bezierCurveTo(x + Math.cos(o[4]) * s * 0.4, y + Math.sin(o[4]) * s * 0.7, x + Math.cos(o[4] + 1) * s * 0.7, y + Math.sin(o[4] - 1) * s * 0.4, x + Math.cos(o[4] + 0.5) * s, y + Math.sin(o[4] + 0.5) * s); g.stroke(); g.strokeStyle = 'rgba(120,90,60,.25)'; g.lineWidth = 1.5; g.stroke(); break;
-        case 'web': g.strokeStyle = 'rgba(235,230,255,.32)'; g.lineWidth = 1; for (k = 0; k < 8; k++) { g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(k * 0.785 + o[4]) * s, y + Math.sin(k * 0.785 + o[4]) * s * 0.7); g.stroke(); } for (k = 1; k <= 3; k++) { g.beginPath(); for (var q = 0; q <= 8; q++) { var wa = q * 0.785 + o[4], wr = s * k / 3 * (q % 2 ? 0.88 : 1); g.lineTo(x + Math.cos(wa) * wr, y + Math.sin(wa) * wr * 0.7); } g.stroke(); } break;
+        case 'shroom': { // margarida: oito pétalas brancas, miolo amarelo (o tipo se chama 'shroom' só por causa do anel de geração)
+          var dr = 5.5 * s, dk;
+          g.lineWidth = 2.6; g.strokeStyle = OUTL; g.lineCap = 'round';
+          g.beginPath(); g.moveTo(x, y + dr * 0.6); g.lineTo(x + 2, y + dr * 2.6); g.stroke();
+          g.fillStyle = '#fbfbf4';
+          for (dk = 0; dk < 8; dk++) { var da = dk * 0.7854; g.beginPath(); g.ellipse(x + Math.cos(da) * dr * 0.95, y + Math.sin(da) * dr * 0.95, dr * 0.62, dr * 0.3, da, 0, 7); g.stroke(); }
+          for (dk = 0; dk < 8; dk++) { var db = dk * 0.7854; g.beginPath(); g.ellipse(x + Math.cos(db) * dr * 0.95, y + Math.sin(db) * dr * 0.95, dr * 0.62, dr * 0.3, db, 0, 7); g.fill(); }
+          g.fillStyle = '#ffcf3a'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, dr * 0.5, 0, 7); g.stroke(); g.fill();
+          ell(g, x - dr * 0.15, y - dr * 0.15, dr * 0.16, dr * 0.12, 'rgba(255,255,255,.7)');
+          break; }
+        case 'fern':
+          for (var pass = 0; pass < 2; pass++) { g.strokeStyle = pass ? '#7fd05a' : OUTL; g.lineWidth = pass ? 3 : 6;
+            for (k = -3; k <= 3; k++) { g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(o[4] + k * 0.28) * 12 * s, y + Math.sin(o[4] + k * 0.28) * 7 * s, x + Math.cos(o[4] + k * 0.34) * 22 * s, y + Math.sin(o[4] + k * 0.34) * 13 * s); g.stroke(); } }
+          break;
+        case 'mud': g.lineWidth = 3.5; g.strokeStyle = '#2a1b0e'; g.fillStyle = '#7a5532'; g.beginPath(); g.ellipse(x, y, o[3] * 1.2, o[3] * 0.62, o[4], 0, 7); g.stroke(); g.fill();
+          ell(g, x - o[3] * 0.25, y - o[3] * 0.15, o[3] * 0.55, o[3] * 0.2, 'rgba(255,225,170,.35)', o[4]); break;
+        case 'thorn': g.lineWidth = 3; g.strokeStyle = OUTL; g.fillStyle = '#4c9a3a';
+          for (k = 0; k < 7; k++) { var ta = k * 0.9; g.beginPath(); g.moveTo(x + Math.cos(ta - 0.25) * 6 * s, y + Math.sin(ta - 0.25) * 4.5 * s); g.lineTo(x + Math.cos(ta) * 17 * s, y + Math.sin(ta) * 12 * s - 6 * s); g.lineTo(x + Math.cos(ta + 0.25) * 6 * s, y + Math.sin(ta + 0.25) * 4.5 * s); g.closePath(); g.stroke(); g.fill(); }
+          break;
+        case 'root': for (var pr2 = 0; pr2 < 2; pr2++) { g.strokeStyle = pr2 ? '#a77a4a' : '#2a1a0d'; g.lineWidth = pr2 ? 5 : 10;
+            g.beginPath(); g.moveTo(x, y); g.bezierCurveTo(x + Math.cos(o[4]) * o[3] * 0.4, y + Math.sin(o[4]) * o[3] * 0.7, x + Math.cos(o[4] + 1) * o[3] * 0.8, y + Math.sin(o[4] + 1) * o[3] * 0.5, x + Math.cos(o[4] + 0.6) * o[3], y + Math.sin(o[4] + 0.6) * o[3] * 0.6); g.stroke(); }
+          break;
+        case 'web': g.strokeStyle = 'rgba(245,238,255,.6)'; g.lineWidth = 2;
+          for (k = 0; k < 8; k++) { g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(k * 0.785 + o[4]) * o[3] * 1.2, y + Math.sin(k * 0.785 + o[4]) * o[3] * 0.7); g.stroke(); }
+          for (k = 1; k < 4; k++) { g.beginPath(); g.ellipse(x, y, o[3] * 0.4 * k, o[3] * 0.24 * k, o[4], 0, 7); g.stroke(); }
+          break;
       }
     });
     L.small.forEach(function (o) {
       switch (o[0]) {
-        case 'stone': ell(g, o[1], o[2], o[3], o[4], rgba('#7b8780', o[6]), o[5]); ell(g, o[1] - 1.5, o[2] - 1.5, o[3] * 0.4, o[4] * 0.4, 'rgba(255,255,255,.18)', 0); break;
-        case 'flower': g.fillStyle = o[4]; g.beginPath(); g.arc(o[1], o[2], o[3], 0, 7); g.fill(); break;
-        case 'log': g.save(); g.translate(o[1], o[2]); g.rotate(o[3]); g.fillStyle = '#2c2016'; g.fillRect(-o[4] / 2, -7, o[4], 14); g.fillStyle = 'rgba(255,255,255,.1)'; g.fillRect(-o[4] / 2, -7, o[4], 4); ell(g, o[4] / 2, 0, 7, 7, '#4a3a26'); g.restore(); break;
+        case 'stone': // pedra gordinha com contorno e brilho
+          g.lineWidth = 3.4; g.strokeStyle = OUTL; g.fillStyle = '#b3bdb4';
+          g.beginPath(); g.ellipse(o[1], o[2], o[3] * 1.7, o[4] * 1.7, o[5], 0, 7); g.stroke(); g.fill();
+          g.save(); g.beginPath(); g.ellipse(o[1], o[2], o[3] * 1.7, o[4] * 1.7, o[5], 0, 7); g.clip();
+          ell(g, o[1] + o[3] * 0.6, o[2] + o[4] * 1.3, o[3] * 2.2, o[4] * 1.2, '#8b968d', o[5]); g.restore();
+          ell(g, o[1] - o[3] * 0.5, o[2] - o[4] * 0.6, o[3] * 0.55, o[4] * 0.3, 'rgba(255,255,255,.65)', o[5] - 0.4); break;
+        case 'flower': { // florzinha de cinco pétalas com contorno
+          var fr = o[3] * 2.2, fx2 = o[1], fy2 = o[2], pi;
+          g.lineWidth = 2.6; g.strokeStyle = OUTL; g.fillStyle = o[4];
+          for (pi = 0; pi < 5; pi++) { var pa = pi * 1.2566; g.beginPath(); g.arc(fx2 + Math.cos(pa) * fr * 0.8, fy2 + Math.sin(pa) * fr * 0.8, fr * 0.7, 0, 7); g.stroke(); }
+          for (pi = 0; pi < 5; pi++) { var pa2 = pi * 1.2566; g.beginPath(); g.arc(fx2 + Math.cos(pa2) * fr * 0.8, fy2 + Math.sin(pa2) * fr * 0.8, fr * 0.7, 0, 7); g.fill(); }
+          g.fillStyle = '#ffd24a'; g.beginPath(); g.arc(fx2, fy2, fr * 0.55, 0, 7); g.fill(); g.lineWidth = 1.6; g.stroke(); break; }
+        case 'log': g.save(); g.translate(o[1], o[2]); g.rotate(o[3]); g.lineWidth = 4; g.strokeStyle = '#26150a'; g.fillStyle = '#8a5a34';
+          g.beginPath(); g.roundRect ? g.roundRect(-o[4] / 2, -11, o[4], 22, 10) : g.rect(-o[4] / 2, -11, o[4], 22); g.stroke(); g.fill();
+          g.fillStyle = 'rgba(255,225,170,.35)'; g.fillRect(-o[4] / 2 + 8, -8, o[4] - 16, 5);
+          ell(g, o[4] / 2 - 4, 0, 7, 9, '#d9a86c'); g.lineWidth = 2; g.strokeStyle = '#26150a'; g.beginPath(); g.ellipse(o[4] / 2 - 4, 0, 3.5, 4.5, 0, 0, 7); g.stroke(); g.restore(); break;
       }
     });
     // toca do dragão
@@ -1549,12 +1656,12 @@
   }
   // Árvore no estilo do slime: copa gorda e brilhante, contorno escuro grosso, brilhos brancos e tronco curtinho.
   // v: 0..3 = tons de verde; 9 = arbusto escuro do fundo. A seed vem da posição, então a árvore é sempre igual.
-  var TREE_COL = [['#1f5230', '#2b6a40', '#143a22'], ['#26562b', '#356f38', '#183f20'], ['#1c4a40', '#27604f', '#123329'], ['#2d5527', '#3d6e33', '#1e3f1c'], , , , , ['#2b6a46', '#44946a', '#174632']];
+  var TREE_COL = [['#3a9a4a', '#62c35a', '#2a7438'], ['#46a83f', '#78d055', '#2f7e32'], ['#2e9a78', '#58c79c', '#217458'], ['#5aa83a', '#8ad352', '#3d7e2c'], , , , , ['#2f8a5c', '#5cc08a', '#1f6845']];
   function paintTree(g, x, y, tr, v) {
     var OUT = '#07140c', lw = Math.max(3, tr * 0.07), C, i;
     if (v === 9) { // arbusto escuro, só o volume
       g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(x + 6, y + tr * 0.5, tr * 0.9, tr * 0.3, 0, 0, 7); g.fill();
-      g.lineWidth = lw; g.strokeStyle = OUT; g.fillStyle = '#16341f';
+      g.lineWidth = lw; g.strokeStyle = OUT; g.fillStyle = '#2a7a3f';
       g.beginPath(); g.ellipse(x, y, tr, tr * 0.8, 0, 0, 7); g.stroke(); g.fill();
       ell(g, x - tr * 0.3, y - tr * 0.3, tr * 0.45, tr * 0.28, 'rgba(110,170,110,.22)');
       return;

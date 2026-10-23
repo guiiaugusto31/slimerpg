@@ -28,7 +28,16 @@
     <input id="nameIn" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Como te chamam na floresta?">
     <div class="field">Cor</div>
     <div class="palette" id="palette" role="radiogroup" aria-label="Cor do slime"></div>
-    <label class="custom-color">Outra cor <input type="color" id="colorIn" value="#5fd35f"></label>
+    <div class="custom-color">
+      <span>Outra cor</span>
+      <button type="button" id="colorBtn" class="color-btn" aria-expanded="false" aria-controls="colorPanel"><i id="colorSw"></i>Escolher</button>
+    </div>
+    <div id="colorPanel" class="color-panel" hidden>
+      <label>Cor <input type="range" id="colH" min="0" max="360" step="1" aria-label="Matiz"></label>
+      <label>Força <input type="range" id="colS" min="25" max="100" step="1" aria-label="Intensidade"></label>
+      <label>Brilho <input type="range" id="colL" min="25" max="75" step="1" aria-label="Brilho"></label>
+      <button type="button" id="colorOk" class="primary">OK</button>
+    </div>
     <!-- Conta por e-mail: só aparece quando o servidor tem contas ligadas (conta.js) -->
     <div id="acct" class="acct" hidden>
       <div id="acctOut">
@@ -52,7 +61,7 @@
       <ul>
         <li>Você só anda: <b>WASD</b> ou setas no PC, joystick no celular.</li>
         <li>As armas atacam e usam habilidades sozinhas, no alvo mais próximo ou na direção do mouse.</li>
-        <li>A cada nível, cada atributo rola 1d3. Força, Destreza e Mana liberam armas; Saúde dá vida.</li>
+        <li>A cada nível você ganha 8 pontos para distribuir (máximo 60 em cada atributo). Força, Destreza e Mana liberam armas; Saúde dá vida.</li>
         <li>Ao morrer você perde o nível atual, mas guarda seus equipamentos.</li>
         <li><b>I</b> abre a mochila (todos os itens aparecem, bloqueados até você ganhar), <b>M</b> as missões e <b>R</b> os rankings.</li>
         <li>No centro do mapa dorme o <b>Dragão ancestral</b>. Só quem está no nível 20 consegue machucá-lo, e ele larga uma arma mítica.</li>
@@ -64,7 +73,7 @@
 <!-- Interface do jogo -->
 <div id="hud" hidden>
   <section id="stats" class="panel">
-    <div class="who"><b id="hName">Slime</b><span id="hLvl">Nv 1</span></div>
+    <div class="who"><b id="hName">Slime</b><span class="lv"><span id="hLvl">Nv 1</span><button id="hPts" type="button" hidden aria-label="Distribuir pontos de atributo"></button></span></div>
     <div class="bar hp"><i id="hpFill"></i><em id="hpText"></em></div>
     <div class="bar xp"><i id="xpFill"></i><em id="xpText"></em></div>
     <div class="attrs" id="attrs"></div>
@@ -77,7 +86,9 @@
   <div id="zoneChip" hidden></div>
   <div id="bossBar" hidden><b>Dragão ancestral</b><div class="bar"><i id="bossFill"></i></div><small id="bossText"></small></div>
 
+  <button id="menuToggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="side">&#9776;</button>
   <nav id="side">
+    <button id="btnAttr" title="Distribuir pontos de atributo (P)">Atributos</button>
     <button id="btnInv" title="Mochila (I)">Mochila</button>
     <button id="btnQuest" title="Missões (M)">Missões</button>
     <button id="btnRank" title="Rankings (R)">Rankings</button>
@@ -109,11 +120,18 @@
 <aside id="invPanel" class="drawer" hidden>
   <header><h2>Mochila</h2><span id="invCount"></span><button class="x" data-close="invPanel" aria-label="Fechar">×</button></header>
   <div class="equipped" id="equipped"></div>
-  <p class="hint" id="fuseHint" hidden>O mesmo item nos dois slots funde a habilidade: +50% de dano e área maior, um disparo por ciclo.</p>
+  <p class="hint" id="fuseHint" hidden>O mesmo item nos dois slots funde a habilidade: +50% de dano e área maior, um disparo por ciclo. Armas diferentes criam uma habilidade mista.</p>
   <div class="starter"><span>Iniciais</span><div id="starterRow"></div></div>
   <div class="tabs" id="invTabs" role="tablist"></div>
   <div class="catalog" id="invGrid"></div>
   <div class="detail" id="detail"><p class="muted">Toque em um item para ver os detalhes.</p></div>
+</aside>
+
+<!-- Atributos -->
+<aside id="attrPanel" class="drawer" hidden>
+  <header><h2>Atributos</h2><button class="x" data-close="attrPanel" aria-label="Fechar">×</button></header>
+  <p class="hint" id="attrHint"></p>
+  <ul id="attrList"></ul>
 </aside>
 
 <!-- Missões -->
@@ -145,6 +163,7 @@
     <h2>Você caiu</h2>
     <p id="deathText"></p>
     <button id="respawnBtn" class="primary">Renascer</button>
+    <button id="menuBtn" type="button" class="death-menu">Voltar ao menu</button>
   </div>
 </div>
 

@@ -7,7 +7,7 @@
 (function () {
   var AC = window.AudioContext || window.webkitAudioContext;
   var NOOP = function () {};
-  if (!AC) { window.SND = { unlock: NOOP, play: NOOP, listen: NOOP, boss: NOOP, cycle: NOOP, mode: function () { return 2; } }; return; }
+  if (!AC) { window.SND = { unlock: NOOP, play: NOOP, listen: NOOP, boss: NOOP, zone: NOOP, stinger: NOOP, cycle: NOOP, mode: function () { return 2; } }; return; }
 
   var ctx = null, master, musicBus, sfxBus, revIn, noiseBuf, offline = false;
   var L = { x: 0, y: 0 }, bossT = 0, boss = 0, mode = 0, voices = 0, started = false;
@@ -63,20 +63,67 @@
 
   /* ---------- música ---------- */
   var BPM = 64, BEAT = 60 / BPM, SIX = BEAT / 4;
-  // Acordes (em semitonos, tudo dentro de Ré Fá Sol Lá Dó): pool de notas para o gayageum e as duas notas do drone
+  // Acordes (notas midi): pool = notas do gayageum/harpa; drone = duas notas graves
   var CH = {
     D: { pool: [50, 57, 62, 65, 69, 74], drone: [38, 45] },
     C: { pool: [48, 55, 60, 62, 67, 72], drone: [36, 43] },
     G: { pool: [43, 50, 55, 62, 67, 69], drone: [43, 50] },
-    A: { pool: [45, 57, 60, 67, 69, 72], drone: [33, 45] }
+    A: { pool: [45, 57, 60, 67, 69, 72], drone: [33, 45] },
+    Am: { pool: [45, 52, 57, 60, 64, 69], drone: [33, 40] },
+    F: { pool: [41, 48, 53, 57, 60, 65], drone: [29, 41] },
+    Em: { pool: [40, 47, 52, 55, 59, 64], drone: [28, 35] },
+    Bm: { pool: [47, 54, 59, 62, 66, 71], drone: [35, 42] },
+    Dm: { pool: [38, 45, 50, 53, 57, 62], drone: [26, 33] },
+    Bb: { pool: [46, 53, 58, 62, 65, 70], drone: [34, 41] },
+    Cm: { pool: [48, 55, 60, 63, 67, 72], drone: [36, 43] }
   };
-  var PROG_A = ['D', 'D', 'C', 'C', 'G', 'G', 'D', 'D'], PROG_B = ['D', 'G', 'C', 'C', 'D', 'G', 'A', 'A'];
-  // Melodia da flauta: [nota midi, tempos]; cada compasso soma 4. Uma nota 0 é pausa. Ré = 62/74.
-  var MEL_A = [[69, 3], [72, 1], [74, 2], [72, 1], [69, 1], [67, 3], [69, 1], [72, 4], [74, 3], [77, 1], [77, 2], [74, 1.5], [72, 0.5], [74, 2], [72, 1], [69, 1], [69, 4]];
-  var MEL_B = [[74, 2], [77, 2], [79, 3], [77, 1], [74, 2], [72, 2], [69, 3], [67, 1], [65, 2], [67, 2], [69, 2], [72, 2], [74, 1.5], [72, 0.5], [69, 2], [69, 4]];
   var PLUCK = [[0, 2, 4, 2, 3, 2, 4, 5], [0, 3, 2, 4, 2, 3, 1, 2], [0, 2, 3, 5, 4, 3, 2, 1], [1, 3, 2, 4, 3, 5, 4, 2]];
-  var SECTIONS = [{ prog: PROG_A, mel: MEL_A, flute: 1 }, { prog: PROG_A, mel: MEL_A, flute: 0 }, { prog: PROG_B, mel: MEL_B, flute: 1 }, { prog: PROG_A, mel: MEL_A, flute: 1 }];
+  var PAT_UP = [[0, 1, 2, 3, 4, 5, 4, 3], [0, 2, 1, 3, 2, 4, 3, 5]];
+  var P8 = function (x) { return x.split(' '); };
+  // Cada trilha tem andamento, seções (acordes + melodia da flauta: [nota, tempos], 32 tempos = 8 compassos) e um estilo de percussão.
+  // lead: instrumento da melodia (flute | bell | brass). arp: padrão do arpejo (soft | up | sparse | none | ostinato).
+  var TRACKS = {
+    // campo (cogumelo e coelho): alegre, maior pentatônico, andamento mais vivo
+    campo: { bpm: 92, lead: 'flute', arp: 'up', perc: 'light', secs: [
+      { prog: P8('C C G G Am Am F G'), flute: 1, mel: [[76,1],[79,1],[81,2],[79,1],[76,1],[74,2],[72,2],[74,1],[76,1],[79,4],[81,1],[84,1],[81,2],[79,2],[76,2],[74,1],[76,1],[72,2],[0,2],[76,1],[79,1]] },
+      { prog: P8('C C G G Am Am F G'), flute: 0, mel: [] },
+      { prog: P8('F F C C G G Am G'), flute: 1, mel: [[81,2],[79,1],[76,1],[79,4],[76,2],[74,2],[72,4],[74,2],[76,1],[79,1],[81,4],[84,2],[81,1],[79,1],[76,4]] }
+    ] },
+    // floresta (lobo e javali): o tema de Payon que já existia
+    floresta: { bpm: 64, lead: 'flute', arp: 'soft', perc: 'soft', secs: [
+      { prog: P8('D D C C G G D D'), flute: 1, mel: [[69,3],[72,1],[74,2],[72,1],[69,1],[67,3],[69,1],[72,4],[74,3],[77,1],[77,2],[74,1.5],[72,0.5],[74,2],[72,1],[69,1],[69,4]] },
+      { prog: P8('D D C C G G D D'), flute: 0, mel: [] },
+      { prog: P8('D G C C D G A A'), flute: 1, mel: [[74,2],[77,2],[79,3],[77,1],[74,2],[72,2],[69,3],[67,1],[65,2],[67,2],[69,2],[72,2],[74,1.5],[72,0.5],[69,2],[69,4]] },
+      { prog: P8('D D C C G G D D'), flute: 1, mel: [[69,3],[72,1],[74,2],[72,1],[69,1],[67,3],[69,1],[72,4],[74,3],[77,1],[77,2],[74,1.5],[72,0.5],[74,2],[72,1],[69,1],[69,4]] }
+    ] },
+    // sombra (broto e aranha): lá menor, devagar, flauta esparsa e tambor distante
+    sombra: { bpm: 54, lead: 'flute', arp: 'sparse', perc: 'dark', secs: [
+      { prog: P8('Am Am F F Em Em Am Am'), flute: 1, mel: [[69,4],[0,2],[72,2],[71,3],[69,1],[0,4],[64,4],[67,2],[69,2],[0,2],[72,2],[76,4]] },
+      { prog: P8('Am Am F F Em Em Am Am'), flute: 0, mel: [] },
+      { prog: P8('Dm Dm Am Am Bb Bb Em Em'), flute: 1, mel: [[74,3],[72,1],[69,4],[0,4],[65,4],[67,2],[69,2],[72,4],[71,4],[0,2],[69,2]] }
+    ] },
+    // ancião (árvore anciã): mi menor, muito lento, sinos de madeira e graves profundos
+    anciao: { bpm: 44, lead: 'bell', arp: 'sparse', perc: 'deep', secs: [
+      { prog: P8('Em Em Em Em Cm Cm Bm Bm'), flute: 1, mel: [[64,6],[67,2],[71,4],[0,4],[69,4],[67,4],[64,4],[0,4]] },
+      { prog: P8('Em Em Cm Cm Em Em Bm Bm'), flute: 1, mel: [[71,4],[0,4],[76,6],[74,2],[71,4],[0,4],[69,4],[64,4]] },
+      { prog: P8('Em Em Em Em Em Em Em Em'), flute: 0, mel: [] }
+    ] },
+    // toca (perto do dragão dormindo): quase sem melodia, coração batendo e drone dissonante
+    toca: { bpm: 48, lead: 'bell', arp: 'none', perc: 'sleep', secs: [
+      { prog: P8('Dm Dm Bb Bb Dm Dm A A'), flute: 0, mel: [] },
+      { prog: P8('Dm Dm Cm Cm Bb Bb A A'), flute: 1, mel: [[62,8],[0,4],[65,4],[69,6],[68,2],[0,4],[62,4]] }
+    ] },
+    // dragão acordado: tema próprio, rápido, tambores de guerra e metais
+    dragao: { bpm: 126, lead: 'brass', arp: 'ostinato', perc: 'war', secs: [
+      { prog: P8('Dm Dm Bb Bb C C A A'), flute: 1, mel: [[62,1],[0,0.5],[62,0.5],[65,1],[69,1],[74,2],[72,1],[69,1],[67,2],[65,2],[62,1],[0,0.5],[62,0.5],[65,1],[67,1],[70,2],[69,1],[65,1],[62,4],[74,1],[0,0.5],[74,0.5],[77,1],[76,1],[74,2],[72,1],[70,1]] },
+      { prog: P8('Dm Dm Bb Bb C C A A'), flute: 0, mel: [] },
+      { prog: P8('Bb Bb C C Dm Dm A A'), flute: 1, mel: [[70,2],[74,2],[77,2],[74,2],[72,2],[76,2],[79,2],[76,2],[74,1],[77,1],[81,2],[77,2],[74,2],[73,2],[74,2],[69,4]] }
+    ] }
+  };
+  var ZONE_TRACK = { cogumelo: 'campo', coelho: 'campo', lobo: 'floresta', javali: 'floresta', broto: 'sombra', aranha: 'sombra', arvore: 'anciao', toca: 'toca' };
+  var cur = 'floresta', want = 'floresta', zoneWant = 'floresta', fighting = false, SECTIONS = TRACKS.floresta.secs;
   var BARS = 8, mNext = 0, mSec = 0, mBar = 0;
+  function setTrack(k) { cur = k; var T = TRACKS[k]; SECTIONS = T.secs; BEAT = 60 / T.bpm; SIX = BEAT / 4; mSec = 0; mBar = 0; }
 
   function pluck(t, m, vel) { // gayageum: corda beliscada com leve queda de afinação
     var f = mtof(m), o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
@@ -117,38 +164,74 @@
   }
   function wood(t, vel) { osc('square', 900, 700, t, 0.04, vel * 0.35, musicBus, 0.001); noise(t, 0.05, 'bandpass', 2400, 1800, 4, vel, musicBus, 0.001); }
 
+  function brass(t, m, dur, vel) { // metal grave de guerra: serra filtrada com ataque forte
+    var f = mtof(m), o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+    o.type = 'sawtooth'; o2.type = 'square'; o.frequency.value = f; o2.frequency.value = f * 1.005;
+    lp.type = 'lowpass'; lp.frequency.setValueAtTime(500, t); lp.frequency.exponentialRampToValueAtTime(2400, t + 0.08); lp.frequency.exponentialRampToValueAtTime(700, t + dur + 0.2);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vel, t + 0.04); g.gain.setValueAtTime(vel, t + Math.max(0.05, dur - 0.1)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.2);
+    var g2 = ctx.createGain(); g2.gain.value = 0.35; o.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(musicBus);
+    o.start(t); o2.start(t); var e = t + dur + 0.3; o.stop(e); o2.stop(e);
+  }
+  function bellTone(t, m, dur, vel) { // sino de madeira: ataque seco e cauda longa
+    var f = mtof(m), o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o2.type = 'sine'; o.frequency.value = f; o2.frequency.value = f * 2.76;
+    env(g, t, 0.004, vel, Math.min(3, dur + 1.2));
+    var g2 = ctx.createGain(); g2.gain.value = 0.2; o.connect(g); o2.connect(g2); g2.connect(g); g.connect(musicBus);
+    o.start(t); o2.start(t); o.stop(t + dur + 1.6); o2.stop(t + dur + 1.6);
+  }
+  function snare(t, vel) { noise(t, 0.14, 'bandpass', 1800, 1200, 0.8, vel, musicBus, 0.002); osc('triangle', 220, 140, t, 0.1, vel * 0.6, musicBus, 0.002); }
+
   function scheduleBar(t, sec, bar) {
-    var s = SECTIONS[sec], chord = CH[s.prog[bar]], i;
-    var bossK = boss;
-    pad(t, chord.drone, BEAT * 4, 0.05 + bossK * 0.035);
-    if (bossK > 0.35) pad(t, [chord.drone[0] + 1], BEAT * 4, 0.025 * bossK); // um semitom a mais: tensão perto do dragão
+    var T = TRACKS[cur], s = SECTIONS[sec], chord = CH[s.prog[bar]], i, perc = T.perc;
+    var bossK = cur === 'dragao' ? 0 : boss;
+    var padV = perc === 'war' ? 0.07 : perc === 'sleep' || perc === 'deep' ? 0.075 : 0.05 + bossK * 0.035;
+    pad(t, chord.drone, BEAT * 4, padV);
+    if (bossK > 0.35 || perc === 'sleep') pad(t, [chord.drone[0] + 1], BEAT * 4, 0.028 * Math.max(bossK, perc === 'sleep' ? 1 : 0)); // um semitom a mais: tensão
     // baixo longo no início do compasso
-    pluck(t, chord.pool[0] - 12 + 12, 0.1);
-    // arpejo do gayageum em colcheias, com pequena variação
-    var pat = PLUCK[(bar + sec) % PLUCK.length];
-    for (i = 0; i < 8; i++) {
-      if (Math.random() < 0.08) continue;
-      var m = chord.pool[pat[i]], vel = (i % 4 === 0 ? 0.075 : 0.045) * (0.85 + Math.random() * 0.3);
-      pluck(t + i * BEAT / 2 + rnd(0, 0.012), m, vel);
+    pluck(t, chord.pool[0], perc === 'war' ? 0.14 : 0.1);
+    var pat, m, vel;
+    if (T.arp === 'soft') { // arpejo do gayageum em colcheias
+      pat = PLUCK[(bar + sec) % PLUCK.length];
+      for (i = 0; i < 8; i++) { if (Math.random() < 0.08) continue; m = chord.pool[pat[i]]; vel = (i % 4 === 0 ? 0.075 : 0.045) * (0.85 + Math.random() * 0.3); pluck(t + i * BEAT / 2 + rnd(0, 0.012), m, vel); }
+    } else if (T.arp === 'up') { // harpa saltitante, bem clara
+      pat = PAT_UP[(bar + sec) % 2];
+      for (i = 0; i < 8; i++) { m = chord.pool[pat[i]] + 12; vel = (i % 2 === 0 ? 0.06 : 0.04) * (0.85 + Math.random() * 0.3); pluck(t + i * BEAT / 2, m, vel); }
+    } else if (T.arp === 'sparse') { // poucas notas, longas
+      for (i = 0; i < 4; i++) { if (Math.random() < 0.35) continue; pluck(t + i * BEAT + rnd(0, 0.03), chord.pool[(i * 2 + bar) % 6], 0.05 + (i === 0 ? 0.03 : 0)); }
+    } else if (T.arp === 'ostinato') { // dragão: semicolcheias graves e repetidas, com acento
+      for (i = 0; i < 8; i++) pluck(t + i * BEAT / 2, chord.pool[i % 4 === 3 ? 2 : 0] + (i % 4 === 2 ? 12 : 0), i % 4 === 0 ? 0.11 : 0.06);
     }
-    // percussão
-    drum(t, 0.08 + bossK * 0.1, bossK > 0.4);
-    if (bar % 2 === 1) wood(t + BEAT * 2, 0.05);
-    if (bossK > 0.25) for (i = 1; i < 4; i++) drum(t + i * BEAT, 0.05 + bossK * 0.1, true);
-    if (bossK > 0.6) for (i = 0; i < 8; i++) noise(t + i * BEAT / 2 + BEAT / 4, 0.04, 'highpass', 6000, 6000, 1, 0.025, musicBus, 0.001);
+    // percussão por trilha
+    var k;
+    if (perc === 'soft') { drum(t, 0.08 + bossK * 0.1, bossK > 0.4); if (bar % 2 === 1) wood(t + BEAT * 2, 0.05); }
+    else if (perc === 'light') { drum(t, 0.06, false); wood(t + BEAT * 2, 0.05); for (k = 0; k < 4; k++) if (k % 2) wood(t + k * BEAT, 0.03); }
+    else if (perc === 'dark') { drum(t, 0.1, true); if (bar % 2 === 1) drum(t + BEAT * 2.5, 0.06, true); }
+    else if (perc === 'deep') { drum(t, 0.12, true); if (bar % 4 === 3) drum(t + BEAT * 3, 0.1, true); }
+    else if (perc === 'sleep') { drum(t, 0.13, true); drum(t + BEAT * 0.45, 0.08, true); if (bar % 2 === 1) drum(t + BEAT * 2, 0.13, true); } // coração do dragão
+    else if (perc === 'war') {
+      for (k = 0; k < 4; k++) drum(t + k * BEAT, k % 2 ? 0.1 : 0.16, true);
+      snare(t + BEAT, 0.08); snare(t + BEAT * 3, 0.1); if (bar % 4 === 3) for (k = 0; k < 4; k++) snare(t + BEAT * 3 + k * BEAT / 4, 0.05 + k * 0.015);
+      for (k = 0; k < 8; k++) noise(t + k * BEAT / 2 + BEAT / 4, 0.04, 'highpass', 6000, 6000, 1, 0.03, musicBus, 0.001);
+    }
+    if (bossK > 0.25 && perc !== 'war') for (i = 1; i < 4; i++) drum(t + i * BEAT, 0.05 + bossK * 0.1, true);
+    if (bossK > 0.6 && perc !== 'war') for (i = 0; i < 8; i++) noise(t + i * BEAT / 2 + BEAT / 4, 0.04, 'highpass', 6000, 6000, 1, 0.025, musicBus, 0.001);
   }
   function scheduleFlute(t, sec, bar) { // as notas da melodia que começam neste compasso
     var s = SECTIONS[sec]; if (!s.flute) return;
-    var pos = 0, b = 0, i;
+    var lead = TRACKS[cur].lead, pos = 0, i;
     for (i = 0; i < s.mel.length; i++) {
       var n = s.mel[i];
-      if (Math.floor(pos / 4 + 1e-6) === bar && n[0]) flute(t + (pos - bar * 4) * BEAT, n[0] + (boss > 0.6 ? 0 : 0), n[1] * BEAT * 0.94, 0.07, n[1] >= 2);
+      if (Math.floor(pos / 4 + 1e-6) === bar && n[0]) {
+        var tt = t + (pos - bar * 4) * BEAT, dd = n[1] * BEAT * 0.94;
+        if (lead === 'brass') brass(tt, n[0] - 12, dd, 0.075); else if (lead === 'bell') bellTone(tt, n[0], dd, 0.09); else flute(tt, n[0], dd, 0.07, n[1] >= 2);
+      }
       pos += n[1];
     }
   }
   function musicSchedule(until) {
     while (mNext < until) {
       if (mNext < ctx.currentTime - 0.05) mNext = ctx.currentTime + 0.05;
+      if (want !== cur) setTrack(want); // troca de trilha só na virada do compasso
       scheduleBar(mNext, mSec, mBar);
       scheduleFlute(mNext, mSec, mBar);
       mNext += BEAT * 4; mBar++;
@@ -197,6 +280,14 @@
   FX.m_cogumelo = function (t, o, v) { noise(t, 0.16, 'lowpass', 1500, 400, 0.8, 0.2 * v, o, 0.01); osc('sine', 220, 150, t, 0.14, 0.12 * v, o, 0.005); };
   FX.m_broto = function (t, o, v) { var f = osc('triangle', 170, 120, t, 0.3, 0.13 * v, o, 0.02); noise(t, 0.26, 'bandpass', 280, 180, 3, 0.09 * v, o, 0.03); };
   FX.m_aranha = function (t, o, v) { noise(t, 0.26, 'highpass', 4200, 6500, 1, 0.12 * v, o, 0.02); for (var i = 0; i < 3; i++) osc('square', 1900, 1500, t + i * 0.05, 0.02, 0.05 * v, o, 0.001); };
+  FX.ms_cogumelo = function (t, o, v) { noise(t, 0.5, 'bandpass', 900, 400, 1, 0.16 * v, o, 0.05); osc('sine', 300, 120, t, 0.4, 0.1 * v, o, 0.02); };
+  FX.ms_coelho = function (t, o, v) { osc('sine', 220, 60, t, 0.3, 0.22 * v, o, 0.005); noise(t, 0.3, 'lowpass', 900, 200, 1, 0.16 * v, o, 0.01); };
+  FX.ms_lobo = function (t, o, v) { noise(t, 0.22, 'highpass', 2500, 5000, 1, 0.18 * v, o, 0.01); noise(t + 0.09, 0.22, 'highpass', 2500, 5000, 1, 0.16 * v, o, 0.01); };
+  FX.ms_javali = function (t, o, v) { noise(t, 0.5, 'lowpass', 700, 200, 1, 0.2 * v, o, 0.02); osc('sawtooth', 90, 50, t, 0.4, 0.14 * v, o, 0.01); };
+  FX.ms_broto = function (t, o, v) { noise(t, 0.5, 'lowpass', 500, 150, 2, 0.2 * v, o, 0.03); osc('triangle', 110, 70, t, 0.4, 0.14 * v, o, 0.02); };
+  FX.ms_aranha = function (t, o, v) { noise(t, 0.35, 'highpass', 3000, 7000, 1, 0.14 * v, o, 0.01); osc('sine', 2400, 900, t, 0.3, 0.06 * v, o, 0.01); };
+  FX.ms_arvore = function (t, o, v) { osc('sawtooth', 60, 32, t, 0.6, 0.22 * v, o, 0.02); noise(t, 0.5, 'lowpass', 600, 120, 2, 0.22 * v, o, 0.03); };
+  FX.m_arvore = function (t, o, v) { osc('sawtooth', 70, 42, t, 0.4, 0.15 * v, o, 0.02); noise(t, 0.34, 'lowpass', 520, 160, 2, 0.14 * v, o, 0.03); };
   // dragão
   FX.d_inhale = function (t, o, v) { noise(t, 0.8, 'bandpass', 300, 1100, 1.2, 0.25 * v, o, 0.5); osc('sawtooth', 60, 110, t, 0.8, 0.07 * v, o, 0.4); };
   FX.d_breath = function (t, o, v) { noise(t, 0.95, 'bandpass', 500, 2200, 0.7, 0.42 * v, o, 0.04); osc('sawtooth', 95, 45, t, 0.9, 0.2 * v, o, 0.02); for (var i = 0; i < 9; i++) noise(t + rnd(0.05, 0.8), 0.03, 'highpass', 3000, 3000, 1, 0.1 * v, o, 0.001); };
@@ -215,7 +306,7 @@
   var GAP = { step: 0.2, hitMob: 0.045, hitBig: 0.07, hitPlayer: 0.06, stab: 0.06, slash: 0.06, smash: 0.08, bow: 0.06, zap: 0.06, bell: 0.08, skill: 0.1, pop: 0.05, ui: 0.04 };
   var lastAt = {};
   // Destaque de cada som: os ataques (golpes, habilidades, bichos e dragão) ficam na frente; passos e interface ficam mais discretos
-  var VOL = { stab: 1.7, slash: 1.7, smash: 1.7, bow: 1.7, zap: 1.7, bell: 1.5, skill: 1.7, m_coelho: 1.6, m_lobo: 1.6, m_javali: 1.6, m_cogumelo: 1.6, m_broto: 1.6, m_aranha: 1.6, d_inhale: 1.3, d_breath: 1.4, d_slam: 1.4, d_claw: 1.5, d_roar: 1.3, hitMob: 1.1, hitBig: 1.2, step: 0.55, ui: 0.6, pop: 0.9 };
+  var VOL = { stab: 1.7, slash: 1.7, smash: 1.7, bow: 1.7, zap: 1.7, bell: 1.5, skill: 1.7, m_coelho: 1.6, m_lobo: 1.6, m_javali: 1.6, m_cogumelo: 1.6, m_broto: 1.6, m_aranha: 1.6, m_arvore: 1.6, ms_cogumelo: 1.5, ms_coelho: 1.5, ms_lobo: 1.5, ms_javali: 1.5, ms_broto: 1.5, ms_aranha: 1.5, ms_arvore: 1.6, d_inhale: 1.3, d_breath: 1.4, d_slam: 1.4, d_claw: 1.5, d_roar: 1.3, hitMob: 1.1, hitBig: 1.2, step: 0.55, ui: 0.6, pop: 0.9 };
 
   // Devolve onde ligar o som: volume e panorama pela distância e posição em relação a quem ouve. null = longe demais.
   function spatial(x, y, base) {
@@ -277,15 +368,29 @@
   window.SND = {
     unlock: unlock, play: play, cycle: cycle, mode: function () { return mode; },
     listen: function (x, y) { L.x = x; L.y = y; },
-    boss: function (v) { bossT = v; },
+    boss: function (v) { // perto do dragão acordado: tema de guerra (com histerese para não ficar trocando)
+      bossT = v;
+      if (!fighting && v > 0.45) fighting = true; else if (fighting && v < 0.15) fighting = false;
+      want = fighting ? 'dragao' : zoneWant;
+    },
+    zone: function (key) { zoneWant = ZONE_TRACK[key] || 'floresta'; if (!fighting) want = zoneWant; },
+    // O dragão despertou: pancada grave, metais descendo e rugido; o tema de guerra começa já no próximo instante.
+    stinger: function () {
+      unlock(); if (!ctx || ctx.state !== 'running' || mode > 0) return;
+      var t = ctx.currentTime + 0.02;
+      osc('sine', 90, 28, t, 1.6, 0.5, musicBus, 0.005); noise(t, 0.9, 'lowpass', 1200, 120, 1, 0.3, musicBus, 0.005);
+      [62, 61, 58, 55, 50].forEach(function (m, i) { brass(t + 0.15 + i * 0.28, m - 12, 0.35, 0.12); brass(t + 0.15 + i * 0.28, m - 24, 0.35, 0.14); });
+      play('d_roar', undefined, undefined, { v: 1.2 });
+      fighting = true; want = 'dragao'; mNext = t + 1.5; setTrack('dragao');
+    },
     // Gera N segundos de música (e uma demonstração dos efeitos) fora do tempo real, para testar e para ouvir em arquivo.
-    _render: function (secs, withSfx, bossLevel) {
-      offline = true; mode = 0;
+    _render: function (secs, withSfx, bossLevel, track) {
+      offline = true; mode = 0; want = track || 'floresta'; setTrack(want);
       var oc = new OfflineAudioContext(2, 44100 * secs, 44100); graph(oc);
       boss = bossT = bossLevel || 0; mNext = 0.2; mSec = 0; mBar = 0;
       musicSchedule(secs - 1);
       if (withSfx) {
-        var seq = ['step', 'step', 'stab', 'slash', 'smash', 'bow', 'zap', 'bell', 'skill', 'hitMob', 'hitBig', 'hitPlayer', 'pop', 'die', 'lvl', 'm_coelho', 'm_lobo', 'm_javali', 'm_cogumelo', 'm_broto', 'm_aranha', 'd_inhale', 'd_breath', 'd_claw', 'd_slam', 'd_roar'];
+        var seq = ['step', 'step', 'stab', 'slash', 'smash', 'bow', 'zap', 'bell', 'skill', 'hitMob', 'hitBig', 'hitPlayer', 'pop', 'die', 'lvl', 'm_coelho', 'm_lobo', 'm_javali', 'm_cogumelo', 'm_broto', 'm_aranha', 'm_arvore', 'd_inhale', 'd_breath', 'd_claw', 'd_slam', 'd_roar', 'ms_cogumelo', 'ms_coelho', 'ms_lobo', 'ms_javali', 'ms_broto', 'ms_aranha', 'ms_arvore'];
         seq.forEach(function (n, i) { play(n, undefined, undefined, { t: 1 + i * 1.3 }); });
       }
       return oc.startRendering();
