@@ -7,6 +7,10 @@ Uso: python3 tools/preparar-fx.py entrada.png saida.webp TIPO
   jato   sopro: a ponta fica no meio da borda esquerda (é ali que fica a boca do dragão); 1024 px de largura
   onda   pancada vista de cima: quadrado centrado no círculo; 640 px
   garra  marcas de garra: quadrado centrado; 512 px
+  elipse círculo visto de cima em perspectiva (mais largo que alto): recorte justo, 640 px de largura, proporção mantida
+  faixa  faixa/rastro horizontal: recorte justo, 1024 px de largura, proporção mantida
+  elipse círculo visto de cima em perspectiva (mais largo que alto): recorte justo, 640 px de largura, proporção mantida
+  faixa  faixa/rastro horizontal: recorte justo, 1024 px de largura, proporção mantida
 
 Depois de salvar, imprime as medidas que fx.js usa (FXMETA). Precisa de Pillow e numpy."""
 import sys
@@ -14,8 +18,8 @@ import numpy as np
 from PIL import Image
 
 src, dst, kind = sys.argv[1], sys.argv[2], sys.argv[3]
-if kind not in ('jato', 'onda', 'garra'):
-    sys.exit('TIPO deve ser jato, onda ou garra')
+if kind not in ('jato', 'onda', 'garra', 'elipse', 'faixa'):
+    sys.exit('TIPO deve ser jato, onda, garra, elipse ou faixa')
 rgb = np.asarray(Image.open(src).convert('RGB')).astype(np.float32) / 255.0
 h, w, _ = rgb.shape
 
@@ -52,6 +56,22 @@ if kind == 'jato':
     tail = a2[:, int(tw * 0.8):]
     rows = np.where(tail.max(axis=1) > 0.25)[0]
     meta = {'w': tw, 'h': th, 'tipY': th / 2, 'endH': int(rows.max() - rows.min()) if len(rows) else th}
+elif kind in ('elipse', 'faixa'):
+    pad = 6
+    x0, y0, x1, y1 = max(0, x0 - pad), max(0, y0 - pad), min(w, x1 + pad), min(h, y1 + pad)
+    im = Image.fromarray((out[y0:y1, x0:x1] * 255).round().astype(np.uint8), 'RGBA')
+    tw = 640 if kind == 'elipse' else 1024
+    th = max(2, int(round(im.height * tw / im.width)))
+    im = im.resize((tw, th), Image.LANCZOS)
+    meta = {'w': tw, 'h': th}
+elif kind in ('elipse', 'faixa'):
+    pad = 6
+    x0, y0, x1, y1 = max(0, x0 - pad), max(0, y0 - pad), min(w, x1 + pad), min(h, y1 + pad)
+    im = Image.fromarray((out[y0:y1, x0:x1] * 255).round().astype(np.uint8), 'RGBA')
+    tw = 640 if kind == 'elipse' else 1024
+    th = max(2, int(round(im.height * tw / im.width)))
+    im = im.resize((tw, th), Image.LANCZOS)
+    meta = {'w': tw, 'h': th}
 else:
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     half = max(x1 - x0, y1 - y0) / 2 + 6
