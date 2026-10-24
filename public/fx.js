@@ -40,9 +40,16 @@
      como fração da largura; MOUTH: de onde sai o fogo, a partir do centro do dragão (em px do mundo, na pose de sopro). */
   var JET = [{ w: 1024, h: 438, endH: 369 }, { w: 1024, h: 492, endH: 409 }, { w: 1024, h: 384, endH: 316 }];
   var ONDA_R = 0.444, MOUTH = { x: 137, y: -60 };
+  // Desenha um sprite de IA centrado em (x, y) com largura w (altura pela proporção); ax/ay = ponto da imagem (0..1) que fica em (x, y); add = soma luz
+  function spr(g, img, x, y, w, rot, al, add, ax, ay) {
+    var h = w * img.height / img.width;
+    g.save(); g.globalCompositeOperation = add ? 'lighter' : 'source-over'; g.globalAlpha = Math.max(0, Math.min(1, al));
+    g.translate(x, y); if (rot) g.rotate(rot);
+    g.drawImage(img, -w * (ax === undefined ? 0.5 : ax), -h * (ay === undefined ? 0.5 : ay), w, h); g.restore();
+  }
   function fxImg(n) { return window.ART && window.ART.img ? window.ART.img(n) : null; }
 
-  var DUR = { thrust: 0.18, smash: 0.42, arc: 0.3, ring: 0.36, orbx: 0.42, s_burst: 0.62, s_cone: 0.45, s_dash: 0.38, d_breath: 0.85, d_slam: 1.0, d_claw: 0.36, ms: 0.7, mixfx: 0.9, healtrail: 2.0, hit: 0.24, pop: 0.26, dust: 0.55, lvl: 0.95 };
+  var DUR = { thrust: 0.18, smash: 0.42, arc: 0.3, ring: 0.36, orbx: 0.42, s_burst: 0.62, s_cone: 0.45, s_dash: 0.38, d_breath: 0.85, d_slam: 1.0, d_claw: 0.36, ms: 0.7, mixfx: 0.9, healtrail: 2.0, hit: 0.24, pop: 0.26, dust: 0.55, lvl: 0.95, tomb: 2.6 };
   function dur(kind) { return DUR[kind] || 0.3; }
 
   function glow(g, x, y, r, c, a) {
@@ -81,7 +88,8 @@
     var hi = tier >= 3, top = tier >= 5, myth = tier >= 6;
     switch (f.kind) {
       case 'thrust': { // faca, rapieira, maça: golpe único
-        var ca = Math.cos(f.a), sa = Math.sin(f.a), len = f.size * (0.5 + 0.7 * e3);
+        var ca = Math.cos(f.a), sa = Math.sin(f.a), len = f.size * (0.5 + 0.7 * e3), timg0 = fam === 'maca' ? null : fxImg('fx_golpe_estocada');
+        if (timg0) { spr(g, timg0, f.x + ca * len * 0.35, f.y + sa * len * 0.35, f.size * (1.3 + 1.3 * e3), f.a, Math.min(1, p * 9) * Math.min(1, a * 1.7), true, 0.5, 0.5); break; }
         if (fam === 'maca') {
           glow(g, f.x, f.y, 26 + tier * 3, P.c, 0.7 * a);
           spikes(g, f.x, f.y, 4, 16 + 14 * e, 8, f.a, 0.2, rgba(P.h, a));
@@ -101,7 +109,8 @@
         break;
       }
       case 'smash': { // martelo: pancada com onda no chão
-        var rad = f.size * (0.2 + 0.85 * e3);
+        var rad = f.size * (0.2 + 0.85 * e3), simg0 = fxImg('fx_golpe_pancada');
+        if (simg0) { spr(g, simg0, f.x, f.y, f.size * 2.4 * (0.35 + 0.65 * e3), 0, Math.min(1, p * 10) * Math.min(1, a * 1.5), true); break; }
         glow(g, f.x, f.y, f.size * 1.1, P.c, 0.35 * a);
         g.strokeStyle = rgba(P.h, a * 0.9); g.lineWidth = 8 * a + 1; g.beginPath(); g.arc(f.x, f.y, rad, 0, TAU); g.stroke();
         g.strokeStyle = rgba(P.c, a * 0.6); g.lineWidth = 3; g.beginPath(); g.arc(f.x, f.y, rad * 0.65, 0, TAU); g.stroke();
@@ -113,7 +122,12 @@
       }
       case 'arc': { // espada e chicote: corte em arco
         var w = f.extra || 2, a0 = f.a - w / 2, sw = Math.min(1, p * 2.4), a1 = a0 + w * sw;
-        var whip = fam === 'chicote';
+        var whip = fam === 'chicote', aimg = fxImg('fx_golpe_corte');
+        if (aimg) { // arte de IA: meia-lua com a parte curva voltada para o golpe
+          var aw = f.size * (whip ? 2.9 : 2.5) * (0.75 + 0.25 * e3);
+          spr(g, aimg, f.x + Math.cos(f.a) * (f.size * 0.95 - aw / 2), f.y + Math.sin(f.a) * (f.size * 0.95 - aw / 2), aw, f.a + Math.PI, Math.min(1, p * 9) * Math.min(1, a * 1.6), true);
+          break;
+        }
         var rOut = f.size, rIn = f.size * (whip ? 0.86 : 0.62);
         var gr = g.createRadialGradient(f.x, f.y, rIn * 0.6, f.x, f.y, rOut);
         gr.addColorStop(0, rgba(P.c, 0)); gr.addColorStop(0.55, rgba(P.c, a * 0.5)); gr.addColorStop(1, rgba(P.h, a * 0.95));
@@ -124,6 +138,8 @@
         break;
       }
       case 'ring': { // sinos: ondas sonoras
+        var rimg = fxImg('fx_golpe_badalada');
+        if (rimg) { spr(g, rimg, f.x, f.y, f.size * 2.3 * (0.3 + 0.7 * e), 0, Math.min(1, p * 9) * Math.min(1, a * 1.5), true); break; }
         for (i = 0; i < 2 + (hi ? 1 : 0); i++) {
           var pp = Math.max(0, Math.min(1, p * 1.25 - i * 0.14)), ee = 1 - Math.pow(1 - pp, 2);
           g.strokeStyle = rgba(i ? P.c : P.h, (1 - pp) * 0.85); g.lineWidth = 4 * (1 - pp) + 0.8;
@@ -134,6 +150,8 @@
         break;
       }
       case 'orbx': { // cajado: explosão arcana
+        var oimg = fxImg('fx_golpe_arcana');
+        if (oimg) { glow(g, f.x, f.y, f.size * 1.2, P.c, 0.3 * a); spr(g, oimg, f.x, f.y, f.size * 2.4 * (0.4 + 0.6 * e3), T * 0.8, Math.min(1, p * 10) * Math.min(1, a * 1.5), true); break; }
         glow(g, f.x, f.y, f.size * 1.6, P.c, 0.55 * a);
         spikes(g, f.x, f.y, 4, f.size * (0.4 + 0.9 * e3), 10, T * 2, 0.12, rgba(P.h, a * 0.8));
         g.strokeStyle = rgba(P.h, a); g.lineWidth = 4 * a + 1; g.beginPath(); g.arc(f.x, f.y, f.size * (0.2 + 0.8 * e), 0, TAU); g.stroke();
@@ -143,12 +161,20 @@
       case 's_burst': { // habilidades em área: martelo, maça, cajado, sinos
         var big = f.size;
         glow(g, f.x, f.y, big * 1.15, P.c, 0.32 * a);
-        for (i = 0; i < 2 + (hi ? 1 : 0) + (top ? 1 : 0); i++) {
+        var simg = fxImg('fx_' + fam); if (fam !== 'martelo' && fam !== 'maca' && fam !== 'cajado' && fam !== 'sinos') simg = null;
+        if (simg) { // arte feita por IA: cresce do centro, soma com a luz do chão e some no fim
+          var sw = big * 2.25 * (0.35 + 0.65 * e3), sh = sw * simg.height / simg.width, sal = Math.min(1, p * 9) * Math.min(1, a * 1.6);
+          g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.max(0, Math.min(1, sal));
+          if (fam === 'cajado') { sw *= 1 + 0.03 * Math.sin(T * 8); sh = sw * simg.height / simg.width; }
+          g.drawImage(simg, f.x - sw / 2, f.y - sh / 2, sw, sh);
+          g.restore();
+        }
+        for (i = 0; !simg && i < 2 + (hi ? 1 : 0) + (top ? 1 : 0); i++) {
           var pp2 = Math.max(0, Math.min(1, p * 1.25 - i * 0.12)), ee2 = 1 - Math.pow(1 - pp2, 2);
           g.strokeStyle = rgba(i ? P.c : P.h, (1 - pp2) * 0.9); g.lineWidth = 9 * (1 - pp2) + 1;
           g.beginPath(); g.arc(f.x, f.y, big * (0.15 + 0.85 * ee2), 0, TAU); g.stroke();
         }
-        if (fam === 'martelo') { // rachaduras e poeira
+        if (simg) { /* arte de IA já desenha o efeito */ } else if (fam === 'martelo') { // rachaduras e poeira
           g.strokeStyle = rgba(P.h, a * 0.9); g.lineWidth = 3;
           for (i = 0; i < 9; i++) { var ca2 = i * TAU / 9 + R() * 0.3; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(f.x + Math.cos(ca2) * big * e3 * 0.95, f.y + Math.sin(ca2) * big * e3 * 0.95); g.stroke(); }
         } else if (fam === 'maca') { // pulso em cruz
@@ -168,6 +194,14 @@
         var w2 = f.extra || 2.3, sw2 = Math.min(1, p * 2.2);
         var gr2 = g.createRadialGradient(f.x, f.y, 6, f.x, f.y, f.size);
         gr2.addColorStop(0, rgba(P.c, 0)); gr2.addColorStop(0.6, rgba(P.c, a * 0.5)); gr2.addColorStop(1, rgba(P.h, a * 0.9));
+        var cimg = fxImg('fx_corte');
+        if (cimg) { // arte de IA: a ponta fica em quem golpeou e o arco abre na direção do golpe; o leque de dano continua marcado, mais fraco
+          g.save(); g.globalAlpha = 0.28; g.fillStyle = gr2; g.beginPath(); g.moveTo(f.x, f.y); g.arc(f.x, f.y, f.size, f.a - w2 / 2, f.a - w2 / 2 + w2 * sw2); g.closePath(); g.fill(); g.restore();
+          var cl = f.size * (0.55 + 0.5 * e3), cs = cl / cimg.width * 1.15, cal = Math.min(1, p * 10) * Math.min(1, a * 1.5);
+          g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.max(0, Math.min(1, cal)); g.translate(f.x, f.y); g.rotate(f.a); g.scale(cs, cs * Math.min(1.6, w2 / 1.6));
+          g.drawImage(cimg, 0, -cimg.height / 2); g.restore();
+          break;
+        }
         g.fillStyle = gr2; g.beginPath(); g.moveTo(f.x, f.y); g.arc(f.x, f.y, f.size, f.a - w2 / 2, f.a - w2 / 2 + w2 * sw2); g.closePath(); g.fill();
         g.strokeStyle = rgba('#ffffff', a * 0.9); g.lineWidth = 3 * a + 1;
         for (i = 0; i < (hi ? 4 : 3); i++) { var la = f.a - w2 / 2 + w2 * (i + 0.5) / (hi ? 4 : 3); if (la > f.a - w2 / 2 + w2 * sw2) continue; g.beginPath(); g.moveTo(f.x + Math.cos(la) * f.size * 0.25, f.y + Math.sin(la) * f.size * 0.25); g.lineTo(f.x + Math.cos(la) * f.size * (0.6 + 0.4 * e3), f.y + Math.sin(la) * f.size * (0.6 + 0.4 * e3)); g.stroke(); }
@@ -175,7 +209,15 @@
         break;
       }
       case 's_dash': { // rapieira: investida com imagens residuais
-        var to = f.extra || [f.x, f.y];
+        var to = f.extra || [f.x, f.y], dimg = fxImg('fx_investida');
+        if (dimg) { // arte de IA esticada ao longo da investida (ponta no destino), com um fio de luz por baixo
+          var dl = Math.hypot(to[0] - f.x, to[1] - f.y) + 70, dth = Math.max(60, Math.min(dl * dimg.height / dimg.width, 150)), dang = Math.atan2(to[1] - f.y, to[0] - f.x);
+          g.strokeStyle = rgba(P.h, a * 0.5); g.lineWidth = 4 * a + 1; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(to[0], to[1]); g.stroke();
+          g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.max(0, Math.min(1, Math.min(1, p * 12) * a * 1.4));
+          g.translate((f.x + to[0]) / 2, (f.y + to[1]) / 2); g.rotate(dang); g.drawImage(dimg, -dl / 2, -dth / 2, dl, dth); g.restore();
+          glow(g, to[0], to[1], 22, P.h, 0.6 * a);
+          break;
+        }
         g.strokeStyle = rgba(P.c, a * 0.55); g.lineWidth = 26 * a + 2; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(to[0], to[1]); g.stroke();
         g.strokeStyle = rgba(P.h, a * 0.9); g.lineWidth = 9 * a + 1; g.stroke();
         g.strokeStyle = rgba('#ffffff', a); g.lineWidth = 2.5; g.stroke();
@@ -224,6 +266,14 @@
         g.globalCompositeOperation = 'source-over';
         g.strokeStyle = 'rgba(20,70,40,' + (0.45 * gA) + ')'; g.lineWidth = 44; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(to2[0], to2[1]); g.stroke();
         g.globalCompositeOperation = 'lighter';
+        var himg = fxImg('fx_cura');
+        if (himg) { // arte de IA ao longo da faixa de cura (brilha e pulsa enquanto dura)
+          var hl = Math.hypot(to2[0] - f.x, to2[1] - f.y) + 90, hth = Math.max(110, Math.min(hl * himg.height / himg.width * 1.4, 190)), hang = Math.atan2(to2[1] - f.y, to2[0] - f.x);
+          g.save(); g.globalAlpha = Math.max(0, Math.min(1, gA * (0.8 + 0.2 * Math.sin(T * 7)))); g.translate((f.x + to2[0]) / 2, (f.y + to2[1]) / 2); g.rotate(hang);
+          g.drawImage(himg, -hl / 2, -hth / 2 - 14, hl, hth); g.restore();
+          g.strokeStyle = rgba('#5dff9a', gA * 0.3 * pls); g.lineWidth = 22; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(to2[0], to2[1]); g.stroke();
+          break;
+        }
         g.strokeStyle = rgba('#5dff9a', gA * 0.55 * pls); g.lineWidth = 34; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(to2[0], to2[1]); g.stroke();
         g.strokeStyle = rgba('#d9ffe8', gA * 0.7); g.lineWidth = 6; g.stroke();
         for (i = 0; i < 14; i++) {
@@ -233,7 +283,16 @@
         break;
       }
       case 'ms': { // ataques especiais dos monstros comuns (desenhados no estilo do jogo: contorno escuro + cor do bicho)
-        var mk = f.fam, rad = f.size, ink = 'rgba(40,24,30,' + (0.85 * a) + ')';
+        var mk = f.fam, rad = f.size, ink = 'rgba(40,24,30,' + (0.85 * a) + ')', mal0 = Math.min(1, p * 9) * Math.min(1, a * 1.5), msi = null;
+        if (mk === 'cogumelo' && (msi = fxImg('fx_ms_esporos'))) { spr(g, msi, f.x, f.y - p * 10, rad * 2.3 * (0.4 + 0.6 * e3), T * 0.6, mal0, true); break; }
+        if (mk === 'coelho' && (msi = fxImg('fx_ms_pouso'))) { spr(g, msi, f.x, f.y, rad * 2.5 * (0.35 + 0.65 * e3), 0, mal0, false); break; }
+        if (mk === 'lobo' && (msi = fxImg('fx_ms_mordida'))) { // as duas fileiras de dentes se fecham em cima do alvo
+          var wsn = Math.min(1, p / 0.32), wjx = f.x + Math.cos(f.a) * rad * 0.62, wjy = f.y + Math.sin(f.a) * rad * 0.62, wsz = rad * 1.3;
+          g.save(); g.translate(wjx, wjy); g.rotate(f.a); g.scale(1, 1.3 - 0.45 * wsn * wsn); g.globalAlpha = Math.max(0, Math.min(1, p > 0.62 ? 1 - (p - 0.62) / 0.38 : 1));
+          g.drawImage(msi, -wsz / 2, -wsz / 2, wsz, wsz); g.restore(); break;
+        }
+        if (mk === 'javali' && (msi = fxImg('fx_ms_javali'))) { spr(g, msi, f.x + Math.cos(f.a) * rad * 0.55, f.y + Math.sin(f.a) * rad * 0.55, rad * (1.1 + 0.4 * e3), f.a, mal0, false); break; }
+        if (mk === 'broto' && (msi = fxImg('fx_ms_raizes'))) { spr(g, msi, f.x, f.y, rad * 2.4 * (0.3 + 0.7 * Math.min(1, p * 3.2)), 0, mal0, true); break; }
         if (mk === 'cogumelo') { // nuvem de esporos
           g.globalCompositeOperation = 'source-over';
           for (i = 0; i < 16; i++) {
@@ -282,7 +341,10 @@
           g.strokeStyle = rgba('#ffffff', a * 0.8); g.lineWidth = 2.5; g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(bx2, by2); g.stroke(); // fio de seda
           g.strokeStyle = rgba('#c9b8ff', a * 0.5); g.lineWidth = 6; g.stroke();
           if (fl < 1) { g.fillStyle = ink; g.beginPath(); g.arc(bx2, by2, 13, 0, TAU); g.fill(); g.fillStyle = '#f4f0ff'; g.beginPath(); g.arc(bx2, by2, 10, 0, TAU); g.fill(); g.strokeStyle = 'rgba(150,130,200,.8)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(bx2 - 8, by2); g.lineTo(bx2 + 8, by2); g.moveTo(bx2, by2 - 8); g.lineTo(bx2, by2 + 8); g.stroke(); }
-          else { // rede aberta (maior se acertou alguém)
+          else if (fxImg('fx_ms_teia')) { // rede aberta (arte de IA)
+            var tnr = (f.extra ? 56 : 30) * (0.6 + 0.4 * Math.min(1, (p - 0.45) / 0.2)), tna = Math.max(0, 1 - (p - 0.65) / 0.35);
+            spr(g, fxImg('fx_ms_teia'), bx2, by2, tnr * 2.6, 0, tna, true);
+          } else { // rede aberta (maior se acertou alguém)
             var nr = (f.extra ? 56 : 30) * (0.6 + 0.4 * Math.min(1, (p - 0.45) / 0.2)), na = Math.max(0, 1 - (p - 0.65) / 0.35);
             g.strokeStyle = rgba('#ffffff', na); g.lineWidth = 2.5;
             for (i = 0; i < 8; i++) { var ra2 = i * TAU / 8; g.beginPath(); g.moveTo(bx2, by2); g.lineTo(bx2 + Math.cos(ra2) * nr, by2 + Math.sin(ra2) * nr); g.stroke(); }
@@ -293,6 +355,7 @@
           var fall = Math.min(1, p * 4);
           g.fillStyle = 'rgba(60,30,10,' + (0.3 * a) + ')'; g.beginPath(); g.arc(f.x, f.y, rad, 0, TAU); g.fill(); // área toda que machuca
           g.fillStyle = 'rgba(90,40,10,' + (0.35 * a) + ')'; g.beginPath(); g.arc(f.x, f.y, rad * 0.6, 0, TAU); g.fill(); g.strokeStyle = rgba('#f2c14e', a * 0.9); g.lineWidth = 3; g.beginPath(); g.arc(f.x, f.y, rad * 0.6, 0, TAU); g.stroke(); // núcleo: dano total e atordoa
+          if (fxImg('fx_ms_galho')) { spr(g, fxImg('fx_ms_galho'), f.x, f.y, rad * 2.3, 0, Math.min(1, p * 6) * Math.min(1, a * 1.5), true); break; }
           g.save(); g.translate(f.x, f.y - (1 - fall) * rad * 1.3); g.rotate(0.5);
           g.fillStyle = ink; g.fillRect(-rad * 0.95, -13, rad * 1.9, 26); g.fillStyle = rgba('#8a5a32', a); g.fillRect(-rad * 0.9, -9, rad * 1.8, 18); g.restore();
           for (i = 0; i < 14; i++) { var la = R() * TAU, lr = rad * (0.2 + 0.9 * e3) * R(); g.fillStyle = rgba(i % 2 ? '#f2c14e' : '#d98b2b', a); g.beginPath(); g.ellipse(f.x + Math.cos(la) * lr, f.y + Math.sin(la) * lr - p * 20, 8 * a + 2, 4 * a + 1, la, 0, TAU); g.fill(); }
@@ -358,7 +421,12 @@
         break;
       }
       case 'hit': { // impacto: clarão, riscos na direção do golpe e anel na cor de quem apanhou
-        var hc = f.extra || '#ffd36b', hs = f.size;
+        var hc = f.extra || '#ffd36b', hs = f.size, himg0 = fxImg('fx_impacto');
+        if (himg0) { // arte de IA (branca): a cor de quem apanhou vem do brilho por trás
+          glow(g, f.x, f.y, hs * (1.0 + 0.8 * e3), hc, 0.6 * a);
+          spr(g, himg0, f.x, f.y, hs * 2.2 * (0.45 + 0.55 * e3), f.a, Math.min(1, p * 12) * Math.min(1, a * 1.6), true);
+          break;
+        }
         glow(g, f.x, f.y, hs * (0.9 + 0.8 * e3), hc, 0.55 * a);
         glow(g, f.x, f.y, hs * 0.55 * (1 - p * 0.5), '#ffffff', 0.9 * a);
         g.strokeStyle = rgba('#ffffff', a * 0.95); g.lineWidth = 3.2 * a + 0.8;
@@ -370,7 +438,8 @@
         break;
       }
       case 'pop': { // projétil que acaba: estouro pequeno
-        var pc = f.extra || '#ffd36b';
+        var pc = f.extra || '#ffd36b', pimg = fxImg('fx_estouro');
+        if (pimg) { spr(g, pimg, f.x, f.y, f.size * 2.1 * (0.4 + 0.6 * e3), seed % 6, Math.min(1, p * 10) * Math.min(1, a * 1.6), true); break; }
         glow(g, f.x, f.y, f.size * (0.7 + 0.9 * e3), pc, 0.5 * a);
         g.strokeStyle = rgba('#ffffff', a * 0.8); g.lineWidth = 2 * a + 0.5; g.beginPath(); g.arc(f.x, f.y, f.size * (0.3 + 0.9 * e3), 0, TAU); g.stroke();
         g.fillStyle = rgba(pc, a);
@@ -378,6 +447,8 @@
         break;
       }
       case 'dust': { // pancada no chão: poeira e onda achatada
+        var dimg0 = fxImg('fx_poeira');
+        if (dimg0) { spr(g, dimg0, f.x, f.y, f.size * 2.8 * (0.35 + 0.65 * e3), 0, 0.95 * Math.min(1, p * 8) * Math.min(1, a * 1.4), false); break; }
         g.globalCompositeOperation = 'source-over';
         for (i = 0; i < 9; i++) {
           var da = i * TAU / 9 + R() * 0.4, dd = f.size * (0.25 + 0.75 * e3), pr = (5 + R() * 5) * (0.6 + e3);
@@ -389,7 +460,41 @@
         g.beginPath(); g.ellipse(f.x, f.y, f.size * (0.2 + 0.8 * e3), f.size * (0.2 + 0.8 * e3) * 0.6, 0, 0, TAU); g.stroke();
         break;
       }
+      case 'tomb': { // lápide do prêmio semanal: sobe do chão onde o jogador caiu, fica um instante e some (tier 2 = dourada)
+        var gold = f.tier >= 2, rise = Math.min(1, p / 0.12), er = 1 - Math.pow(1 - rise, 3), fade = p > 0.78 ? 1 - (p - 0.78) / 0.22 : 1;
+        var tw = 22, th = 46 * er, tx = f.x, ty = f.y + 14;
+        g.globalCompositeOperation = 'source-over'; g.globalAlpha = Math.max(0, fade);
+        // poeira ao subir
+        for (i = 0; i < 7; i++) { var da = i / 7 * TAU, dr = (6 + 22 * rise) * (0.6 + 0.5 * R()); g.fillStyle = 'rgba(120,100,70,' + (0.35 * (1 - rise)).toFixed(2) + ')'; g.beginPath(); g.arc(tx + Math.cos(da) * dr, ty + Math.sin(da) * dr * 0.35, 3 + 3 * R(), 0, TAU); g.fill(); }
+        if (gold) { g.globalCompositeOperation = 'lighter'; glow(g, tx, ty - th * 0.5, 46, '#ffd36b', 0.4 * fade); g.globalCompositeOperation = 'source-over'; }
+        g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(tx, ty, tw + 6, 6, 0, 0, TAU); g.fill();
+        var timg = fxImg(gold ? 'fx_lapide_ouro' : 'fx_lapide');
+        if (timg) { // arte de IA: a lápide sobe do chão
+          var tws = 50, ths = tws * timg.height / timg.width;
+          g.save(); g.translate(tx, ty); g.scale(1, Math.max(0.02, er)); g.drawImage(timg, -tws / 2, -ths, tws, ths); g.restore();
+          if (gold) for (i = 0; i < 3; i++) { var sp0 = ((p * 2 + i / 3) % 1); g.globalCompositeOperation = 'lighter'; g.fillStyle = rgba('#fff3c4', (1 - sp0) * fade); g.beginPath(); g.arc(tx + (i - 1) * 12, ty - ths * 0.4 - sp0 * 26, 2.2, 0, TAU); g.fill(); }
+          g.globalAlpha = 1; break;
+        }
+        g.beginPath(); g.moveTo(tx - tw, ty); g.lineTo(tx - tw, ty - th + tw); g.arc(tx, ty - th + tw, tw, Math.PI, 0); g.lineTo(tx + tw, ty); g.closePath();
+        var tg = g.createLinearGradient(tx - tw, 0, tx + tw, 0);
+        if (gold) { tg.addColorStop(0, '#a8740d'); tg.addColorStop(0.35, '#ffe483'); tg.addColorStop(1, '#c58b12'); } else { tg.addColorStop(0, '#6d7078'); tg.addColorStop(0.4, '#b8bcc4'); tg.addColorStop(1, '#7b7f88'); }
+        g.fillStyle = tg; g.fill(); g.lineWidth = 2.2; g.strokeStyle = 'rgba(22,14,10,.9)'; g.stroke();
+        if (rise > 0.8) { // cruz gravada e capim na base
+          g.strokeStyle = gold ? '#7a5208' : '#4a4d55'; g.lineWidth = 3; g.beginPath(); g.moveTo(tx, ty - th + tw - 8); g.lineTo(tx, ty - th + tw + 12); g.moveTo(tx - 7, ty - th + tw); g.lineTo(tx + 7, ty - th + tw); g.stroke();
+          g.strokeStyle = '#4d8a3a'; g.lineWidth = 2; g.beginPath(); for (i = -2; i <= 2; i++) { g.moveTo(tx + i * 7, ty); g.lineTo(tx + i * 7 + (i % 2 ? 3 : -3), ty - 9); } g.stroke();
+        }
+        if (gold) for (i = 0; i < 3; i++) { var sp = ((p * 2 + i / 3) % 1); g.globalCompositeOperation = 'lighter'; g.fillStyle = rgba('#fff3c4', (1 - sp) * fade); g.beginPath(); g.arc(tx + (i - 1) * 11, ty - th * 0.4 - sp * 26, 2.2, 0, TAU); g.fill(); }
+        g.globalAlpha = 1;
+        break;
+      }
       case 'lvl': { // subiu de nível: anéis dourados e faíscas subindo
+        var limg = fxImg('fx_nivel');
+        if (limg) { // arte de IA: anéis com runas e coluna de luz; o centro dos anéis fica sobre o chão do slime
+          var lw0 = f.size * 2.5 * (0.5 + 0.5 * e3);
+          glow(g, f.x, f.y - 10, 64 * (1 - p * 0.3), '#ffd36b', 0.3 * a);
+          spr(g, limg, f.x, f.y + 10, lw0, 0, Math.min(1, p * 8) * Math.min(1, a * 1.5), true, 0.5, 0.74);
+          break;
+        }
         glow(g, f.x, f.y - 10, 64 * (1 - p * 0.3), '#ffd36b', 0.5 * a);
         for (i = 0; i < 3; i++) {
           var lp = Math.max(0, Math.min(1, p * 1.3 - i * 0.13)), le = 1 - Math.pow(1 - lp, 2);
@@ -463,7 +568,11 @@
   }
   function drawProj(g, e, T) {
     var tier = e.tier || 1, P = pal(FAM[e.fam] ? e.fam : 'varinha', tier), x = e.rx, y = e.ry, R = e.r || 10, ang = e.a || 0, i;
-    if (e.k === 'p' && e.fam === 'arco') { arrow(g, x, y, ang, P, tier, T, tier >= 2); return; }
+    if (e.k === 'p' && e.fam === 'arco') {
+      var aimg = fxImg('fx_proj_flecha');
+      if (aimg) { var aw = 150 + tier * 8; spr(g, aimg, x, y, aw, ang, 1, true, 0.86, 0.5); return; }
+      arrow(g, x, y, ang, P, tier, T, tier >= 2); return;
+    }
     if (e.k === 'v') { arrow(g, x, y, ang, P, tier, T, true); return; }
     g.save(); g.translate(x, y); g.globalCompositeOperation = 'lighter';
     var ca = Math.cos(ang), sa = Math.sin(ang);
@@ -483,6 +592,8 @@
       glow(g, 0, 0, R * 3.2, P.c, 0.7);
       g.fillStyle = '#ffffff'; g.beginPath(); g.arc(0, 0, R * 0.8, 0, TAU); g.fill();
       if (tier >= 6) for (i = 0; i < 5; i++) { var fl = (T * 3 + i * 0.2) % 1; glow(g, -ca * fl * len + Math.sin(T * 20 + i) * 4, -sa * fl * len + Math.cos(T * 20 + i) * 4, 8 * (1 - fl) + 2, '#ff8a2a', 0.6 * (1 - fl)); }
+    } else if (e.fam === 'varinha' && fxImg('fx_proj_varinha')) { // disparo básico da varinha (arte de IA: o orbe fica na frente e o rastro atrás)
+      g.restore(); spr(g, fxImg('fx_proj_varinha'), x, y, R * 9.5, ang, 1, true, 0.785, 0.5); return;
     } else { // disparo básico da varinha
       glow(g, 0, 0, R * 2.6, P.c, 0.65);
       var gv = g.createRadialGradient(0, 0, 0.5, 0, 0, R * 1.1); gv.addColorStop(0, '#ffffff'); gv.addColorStop(0.5, P.h); gv.addColorStop(1, rgba(P.c, 0));

@@ -323,6 +323,10 @@ async function main() {
   pd.hp = pd.maxHp; pe.hp = pe.maxHp;
   await sleep(1300);
   ok(bs.state === 0 && pd.hp === pd.maxHp && Math.abs(bs.x - W().cx) < 1, 'dragão dorme e não ataca quem não o machucou');
+  { const { bossCdMul } = require('../server'), mk = (f) => ({ hp: 1000 * f, maxHp: 1000 });
+    ok(bossCdMul(mk(0.5)) === 1 && bossCdMul(mk(0.3)) === 1, 'dragão com 30% de vida ou mais: recarga normal');
+    ok(Math.abs(bossCdMul(mk(0.29)) - 0.8) < 1e-9 && Math.abs(bossCdMul(mk(0.1)) - 0.8) < 1e-9, 'dragão abaixo de 30% de vida: recarga 20% menor');
+    ok(Math.abs(bossCdMul(mk(0.09)) - 0.6) < 1e-9 && Math.abs(bossCdMul(mk(0.01)) - 0.6) < 1e-9, 'dragão abaixo de 10% de vida: recarga 40% menor'); }
   ok(srvHit(rd, pd, bs, 500, 'phys') === true && bs.state === 1, 'ao levar um golpe, o dragão acorda');
   await sleep(250);
   ok(bs.maxHp === baseHp, 'sozinho, a vida dele não cresce (' + bs.maxHp + ')');

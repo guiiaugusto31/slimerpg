@@ -176,7 +176,7 @@ const MOBS = {
 // Varinha: o tiro estoura em n estilhaços teleguiados (velocidade, alcance, curva em rad/s, dano em fração do tiro, seek = até onde procuram outro alvo)
 const WAND_SPLIT = { n: 5, speed: 520, range: 340, turn: 8, mul: 0.6, seek: 300 };
 const TRAIL_HEAL = { time: 2, width: 40 }; // rastro de cura (rapieira + sinos): dura 2 s, cura quem fez a investida ao ficar nele
-const BOSS = { mob: 'dragao', respawn: 300, minShare: 0.06, clear: 270, minLevel: 20, leash: 1500, rage: 0.3, scale: 0.2, scaleCap: 12, armorItem: 'draco_6', armorDrop: 0.5 };
+const BOSS = { mob: 'dragao', respawn: 300, minShare: 0.06, clear: 270, minLevel: 20, leash: 1500, rage: 0.3, cdTiers: [{ hp: 0.3, mul: 0.8 }, { hp: 0.1, mul: 0.6 }], scale: 0.2, scaleCap: 12, armorItem: 'draco_6', armorDrop: 0.5 };
 // Zonas em anéis elípticos, da borda (fraca) para a praça do centro (forte). nd = distância normalizada ao centro.
 const ZONES = [
   { min: 0.80, max: 1.00, mob: 'cogumelo', weight: 0.28 },
@@ -309,14 +309,26 @@ function howToGet(item) {
 
 /* ------------------------------ skins (só visuais) ------------------------------ */
 // Nada aqui dá vantagem em combate. slot: onde a skin entra (body = corpo, head = cabeça, face = rosto, bow = laço); code: número dentro do slot (0 = nada).
-const SKIN_SLOTS = ['head']; // por enquanto só chapéus; a estrutura aceita mais lugares (rosto, costas...) no futuro
+const SKIN_SLOTS = ['head', 'kill']; // por enquanto só chapéus; a estrutura aceita mais lugares (rosto, costas...) no futuro
 const SKINS = {
   cogumelo: { name: 'Chapéu de cogumelo', slot: 'head', code: 1 },
   marinheiro: { name: 'Chapéu de marinheiro', slot: 'head', code: 2 },
   coroa: { name: 'Coroinha de flores', slot: 'head', code: 3 },
   cartola: { name: 'Cartola', slot: 'head', code: 4 },
   mago: { name: 'Chapéu de mago', slot: 'head', code: 5, premium: true },
-  pirata: { name: 'Chapéu de pirata', slot: 'head', code: 6, premium: true }
+  pirata: { name: 'Chapéu de pirata', slot: 'head', code: 6, premium: true },
+  // Prêmios do ranking semanal (não estão à venda): quem termina a semana em 1º resgata na loja
+  dragao: { name: 'Cabeça de dragão', slot: 'head', code: 7, prize: true },
+  dragao_ouro: { name: 'Cabeça de dragão dourada', slot: 'head', code: 8, prize: true },
+  lapide: { name: 'Lápide (ao abater)', slot: 'kill', code: 1, prize: true },
+  lapide_ouro: { name: 'Lápide dourada (ao abater)', slot: 'kill', code: 2, prize: true }
+};
+// Prêmio de cada ranking semanal: quem fechou a semana em 1º lugar pode resgatar a skin (vale para sempre depois de resgatada)
+const WEEK_PRIZES = {
+  coop: { skin: 'dragao', title: 'Cooperativo: tempo até o dragão' },
+  pvpm: { skin: 'lapide', title: 'PvP: abates' },
+  pvp: { skin: 'lapide_ouro', title: 'Clássico: abates' },
+  dragon: { skin: 'dragao_ouro', title: 'Clássico: tempo até o dragão' }
 };
 // Pacotes à venda (preço em reais). Cada pacote libera as skins da lista.
 const SKIN_PACKS = {
@@ -339,14 +351,15 @@ function skinClean(eq, own) {
   }
   return out;
 }
+// Número que viaja pela rede: unidades/dezenas = código do chapéu, centenas = código do efeito de abate (0 = nenhum)
 function skinCode(eq) {
-  const id = eq && eq.head;
-  return id && Object.prototype.hasOwnProperty.call(SKINS, id) && SKINS[id].slot === 'head' ? SKINS[id].code : 0;
+  const c = (slot) => { const id = eq && eq[slot]; return id && Object.prototype.hasOwnProperty.call(SKINS, id) && SKINS[id].slot === slot ? SKINS[id].code : 0; };
+  return c('head') + c('kill') * 100;
 }
 function skinDecode(n) {
   const out = skinEmpty();
   n = Math.floor(Number(n) || 0);
-  if (n > 0) out.head = SKIN_BY_CODE['head' + n] || null;
+  if (n > 0) { out.head = SKIN_BY_CODE['head' + (n % 100)] || null; out.kill = SKIN_BY_CODE['kill' + Math.floor(n / 100)] || null; }
   return out;
 }
 
@@ -354,7 +367,7 @@ function publicData() {
   return {
     MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS,
     ATTR_NAMES, FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, RES_PER_TIER, RES_CAP, QUESTS, POINTS_PER_LEVEL, ATTR_MAX,
-    ITEM_LIMIT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, SKIN_SLOTS, SKINS, SKIN_PACKS, MODES
+    ITEM_LIMIT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, SKIN_SLOTS, SKINS, SKIN_PACKS, WEEK_PRIZES, MODES
   };
 }
 
@@ -362,5 +375,5 @@ module.exports = {
   MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS, WAND_SPLIT, TRAIL_HEAL, ATTRS, ATTR_NAMES, POINTS_PER_LEVEL, LEVEL_DIE, MODES, ATTR_MAX,
   FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, QUESTS, MOB_COUNT, MOB_RESPAWN, DROP_WEAPON, DROP_ARMOR,
   DROP_MAX_TIER, DROP_MAX_TIER_ARMOR, ITEM_LIMIT, PLAYER_REGEN, PLAYER_STUN_MULT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, TUNE, ONEHIT_MAX_HITS, MIN_HITS, REF_ATTR, mobHpOfTier, hitCap, howToGet, mixName, mixCd, MIX_DMG, xpNeed, attrOf, weaponDamage, skillDamage, armorStats, meetsReq, moveSpeed, MOVE_BASE, publicData,
-  SKIN_SLOTS, SKINS, SKIN_PACKS, skinEmpty, skinClean, skinCode, skinDecode
+  SKIN_SLOTS, SKINS, SKIN_PACKS, WEEK_PRIZES, skinEmpty, skinClean, skinCode, skinDecode
 };

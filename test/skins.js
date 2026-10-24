@@ -40,7 +40,7 @@ function pure() {
   for (const id of Object.keys(D.SKINS)) { const eq = D.skinEmpty(); eq[D.SKINS[id].slot] = id; const n = D.skinCode(eq); if (!n || D.skinDecode(n)[D.SKINS[id].slot] !== id) rt = false; }
   ok(rt && D.skinCode(D.skinEmpty()) === 0 && D.skinDecode(0).head === null && D.skinDecode(999).head === null && D.skinDecode('x').head === null, 'código de rede de cada skin vai e volta; valores estranhos viram "nenhum"');
   ok(!D.skinClean({ head: 'mago' }, []).head && D.skinClean({ head: 'mago' }, ['mago']).head === 'mago' && !D.skinClean({ head: 'toString' }, null).head && !D.skinClean({ head: { a: 1 } }, null).head, 'skinClean exige que a conta possua e ignora ids inventados');
-  ok(Object.values(D.SKIN_PACKS).every((p) => p.skins.every((id) => D.SKINS[id])) && D.SKIN_PACKS.tudo.skins.length === Object.keys(D.SKINS).length, 'todos os pacotes só têm skins que existem e "Tudo" tem todas');
+  ok(Object.values(D.SKIN_PACKS).every((p) => p.skins.every((id) => D.SKINS[id])) && D.SKIN_PACKS.tudo.skins.length === Object.keys(D.SKINS).filter((id) => !D.SKINS[id].prize).length, 'todos os pacotes só têm skins que existem e "Tudo" tem todas as que estão à venda');
   ok(D.SKIN_PACKS.chapeus.price === 2 && D.SKIN_PACKS.mago.price === 5 && D.SKIN_PACKS.pirata.price === 5 && D.SKIN_PACKS.tudo.price === 10, 'preços: R$ 2, 5, 5 e 10');
 }
 

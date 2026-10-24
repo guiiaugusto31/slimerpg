@@ -93,6 +93,9 @@
   <canvas id="mini" width="156" height="98"></canvas>
   <div id="zoneChip" hidden></div>
   <div id="modeChip" hidden></div>
+  <div id="fightChip" hidden></div>
+  <div id="sessChip" hidden></div>
+  <div id="respChip" hidden></div>
   <div id="bossBar" hidden><b>Dragão ancestral</b><div class="bar"><i id="bossFill"></i></div><small id="bossText"></small></div>
 
   <button id="menuToggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="side">&#9776;</button>
@@ -104,6 +107,7 @@
     <button id="btnShop" title="Loja de skins">Skins</button>
     <button id="btnAim" title="Como as armas escolhem o alvo">Mira: alvo próximo</button>
     <button class="snd-btn" title="Música e efeitos sonoros">Som: música e efeitos</button>
+    <button id="btnMenu" title="Sair da partida e voltar à tela inicial">Voltar ao menu</button>
   </nav>
 
   <section id="slots" aria-label="Equipamento">
@@ -152,9 +156,20 @@
 <!-- Rankings -->
 <aside id="rankPanel" class="drawer" hidden>
   <header><h2>Rankings</h2><button class="x" data-close="rankPanel" aria-label="Fechar">×</button></header>
-  <div class="tabs" id="rankTabs" role="tablist">
-    <button data-tab="pvp" role="tab" aria-selected="true">PvP</button>
+  <div class="tabs" id="rankPer" role="tablist" aria-label="Período">
+    <button data-per="week" role="tab" aria-selected="true">Semanal</button>
+    <button data-per="all" role="tab" aria-selected="false">Desde o início</button>
+  </div>
+  <div class="tabs" id="rankMode" role="tablist" aria-label="Modo">
+    <button data-rmode="classic" role="tab" aria-selected="true">Clássico</button>
+    <button data-rmode="pvp" role="tab" aria-selected="false">PvP</button>
+    <button data-rmode="pve" role="tab" aria-selected="false">PvE</button>
+  </div>
+  <div class="tabs" id="rankTabs" role="tablist" aria-label="Ranking">
+    <button data-tab="pvp" role="tab" aria-selected="true">Abates</button>
     <button data-tab="dragon" role="tab" aria-selected="false">Dragão</button>
+    <button data-tab="coop" role="tab" aria-selected="false" hidden>Dragão</button>
+    <button data-tab="pvpm" role="tab" aria-selected="false" hidden>Abates</button>
   </div>
   <p class="hint" id="rankHint"></p>
   <ol class="rank-list" id="rankList"></ol>

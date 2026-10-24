@@ -109,7 +109,7 @@ Cai do dragão com 50% de chance por vitória (`BOSS.armorDrop`), só para quem 
 
 Vale para o golpe básico, para a habilidade e para a habilidade fundida (+50%). O dragão fica de fora.
 
-**Não é uma trava no código.** O dano continua escalando com o atributo da arma, que sobe cerca de 2 por nível (cada atributo rola 1d3), e com a faixa. O teto é respeitado pelos **multiplicadores** de cada arma (`mult` e `skill.mult` em `game-data.js`). Por isso um golpe forte ainda mata de uma vez um monstro de faixa muito mais baixa: um lendário contra um cogumelo (30 de vida) continua sendo um golpe só.
+**Não é uma trava no código.** O dano continua escalando com o atributo da arma, que sobe cerca de 2 por nível quando os 8 pontos por nível são espalhados (hoje o jogador escolhe e pode concentrar até 60 em um atributo, então o dano pode passar do teto calibrado), e com a faixa. O teto é respeitado pelos **multiplicadores** de cada arma (`mult` e `skill.mult` em `game-data.js`). Por isso um golpe forte ainda mata de uma vez um monstro de faixa muito mais baixa: um lendário contra um cogumelo (30 de vida) continua sendo um golpe só.
 
 **Como foi calibrado.** Cada faixa tem um monstro de referência (a faixa 1 é o coelho-musgo, 278 de vida; a 2, o lobo, 440; a 3, o javali, 951; a 4, o broto, 1877; a 5, a aranha-véu, 3300; a faixa mítica também usa a aranha) e um atributo de referência no fim do uso da faixa (`REF_ATTR`: 10, 18, 28, 38, 43 e 44). O teto de cada faixa é a vida do monstro dividida pelos golpes mínimos:
 

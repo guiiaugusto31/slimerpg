@@ -5,7 +5,7 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var GD = module.exports, A = window.ART;
-  var SLOT_NAMES = { head: 'Chapéu' };
+  var SLOT_NAMES = { head: 'Chapéu', kill: 'Efeito ao abater jogador' };
   var st = { loja: null, lojaErr: '', own: [], eq: {}, tab: 'loja', open: null, busy: false, msg: '', loaded: false };
   var getColor = function () { return '#5fd35f'; };
   var prevs = []; // canvases de pré-visualização desenhados enquanto a janela está aberta
@@ -66,6 +66,16 @@
     drawPrev(c, eq, 0, r);
     return c;
   }
+  function tombIcon(gold, w, h) { // foto da lápide (o efeito só aparece no jogo, quando você abate alguém)
+    var c = el('canvas', { width: w, height: h, class: 'shop-prev', 'aria-hidden': 'true' }), g = c.getContext('2d'), cx = w / 2, by = h - 8, tw = 15, th = h - 18;
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(cx, by, tw + 6, 5, 0, 0, 7); g.fill();
+    g.beginPath(); g.moveTo(cx - tw, by); g.lineTo(cx - tw, by - th + tw); g.arc(cx, by - th + tw, tw, Math.PI, 0); g.lineTo(cx + tw, by); g.closePath();
+    var gr = g.createLinearGradient(cx - tw, 0, cx + tw, 0);
+    if (gold) { gr.addColorStop(0, '#a8740d'); gr.addColorStop(0.35, '#ffe483'); gr.addColorStop(1, '#c58b12'); } else { gr.addColorStop(0, '#6d7078'); gr.addColorStop(0.4, '#b8bcc4'); gr.addColorStop(1, '#7b7f88'); }
+    g.fillStyle = gr; g.fill(); g.lineWidth = 2; g.strokeStyle = 'rgba(22,14,10,.9)'; g.stroke();
+    g.strokeStyle = gold ? '#7a5208' : '#4a4d55'; g.lineWidth = 3; g.beginPath(); g.moveTo(cx, by - th + tw - 8); g.lineTo(cx, by - th + tw + 10); g.moveTo(cx - 6, by - th + tw - 1); g.lineTo(cx + 6, by - th + tw - 1); g.stroke();
+    return c;
+  }
   function packEq(pack) { // o que mostrar na foto do pacote
     var eq = GD.skinEmpty();
     eq.head = pack.skins[pack.skins.length - 1]; // o chapéu do pacote que mais chama atenção (no "Tudo", o último da lista)
@@ -122,7 +132,41 @@
     return card;
   }
 
+  // Prêmios do ranking semanal: quem fechou a semana passada em 1º resgata a skin aqui (o servidor confere o resgate)
+  function loadPrizes() {
+    if (location.protocol === 'file:') return Promise.resolve();
+    return api('GET', '/api/ranking').then(function (r) { if (r.ok && r.body && r.body.prizes) { st.prizes = r.body.prizes; render(); } }).catch(function () {});
+  }
+  function claim(btn) {
+    if (st.busy) return; st.busy = true; st.msg = ''; btn.disabled = true;
+    api('POST', '/api/ranking/claim', {}).then(function (r) {
+      st.busy = false;
+      if (r.ok) { st.own = r.body.own || st.own; st.msg = r.body.granted && r.body.granted.length ? 'Prêmio resgatado! Equipe em "Minhas skins".' : 'Não há prêmio para resgatar agora.'; }
+      else { st.msg = (r.body && r.body.error) || 'Não consegui resgatar agora.'; if (r.status === 401 && window.Conta) window.Conta.expired(); }
+      render();
+    }).catch(function () { st.busy = false; st.msg = 'Sem conexão com o servidor.'; render(); });
+  }
+  function prizeSection(body) {
+    var P = st.prizes, box = el('section', { class: 'shop-prizes' }, [el('h3', { text: 'Prêmios da semana' }),
+      el('p', { class: 'hint', text: 'Quem fecha a semana em 1º lugar de um ranking resgata a skin aqui, na semana seguinte (segunda 00:00, horário de Brasília). Depois de resgatada, é sua para sempre.' })]);
+    if (!P) { box.appendChild(el('p', { class: 'hint', text: 'Carregando…' })); body.appendChild(box); return; }
+    P.winners.forEach(function (w) {
+      var pr = GD.WEEK_PRIZES[w.board], sk = GD.SKINS[pr.skin], has = st.own.indexOf(pr.skin) >= 0;
+      var row = el('div', { class: 'shop-prize' }, [sk.slot === 'head' ? prevCanvas({ head: pr.skin, kill: null }, 74, 56, 20) : tombIcon(pr.skin === 'lapide_ouro', 74, 56),
+        el('div', { class: 'shop-prize-t' }, [el('b', { text: sk.name }), el('small', { text: pr.title }),
+          el('small', { text: w.name ? 'Vencedor da semana passada: ' + w.name + (w.me ? ' (você)' : '') : 'Semana passada: ninguém pontuou' })])]);
+      if (w.me) {
+        if (has) row.appendChild(el('span', { class: 'shop-got', text: 'Resgatado' }));
+        else { var b = el('button', { type: 'button', class: 'primary', text: 'Resgatar' }); b.addEventListener('click', function () { claim(b); }); row.appendChild(b); }
+      }
+      box.appendChild(row);
+    });
+    body.appendChild(box);
+  }
+
   function lojaTab(body) {
+    if (st.msg) body.appendChild(el('p', { class: 'shop-note', role: 'status', text: st.msg }));
+    prizeSection(body);
     var l = st.loja;
     if (!l) { body.appendChild(el('p', { class: 'hint', text: st.lojaErr || 'Carregando a loja…' })); return; }
     body.appendChild(el('p', { class: 'shop-note', text: 'Só visuais: nenhuma skin dá vantagem em combate.' }));
@@ -156,7 +200,7 @@
       var list = el('div', { class: 'shop-opts', role: 'radiogroup', 'aria-label': SLOT_NAMES[slot] });
       function opt(id, label) {
         var has = !id || st.own.indexOf(id) >= 0, on = (st.eq[slot] || null) === (id || null);
-        var b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(on), class: has ? '' : 'locked', text: label + (has ? '' : ' (bloqueada)') });
+        var b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(on), class: has ? '' : 'locked', text: label + (has ? '' : (id && GD.SKINS[id].prize ? ' (prêmio semanal)' : ' (bloqueada)')) });
         b.addEventListener('click', function () { if (!has) { st.tab = 'loja'; render(); return; } equip(slot, id); });
         list.appendChild(b);
       }
@@ -186,7 +230,7 @@
   function show(tab) {
     if (tab) st.tab = tab;
     $('shopPanel').hidden = false; st.msg = '';
-    render(); loadLoja(); loadMine();
+    render(); loadLoja(); loadMine(); loadPrizes();
   }
 
   Array.prototype.forEach.call(document.querySelectorAll('#shopTabs [data-tab]'), function (b) {
@@ -210,7 +254,7 @@
   window.Loja = {
     init: function (o) { if (o && o.color) getColor = o.color; },
     show: show, set: setMine,
-    equipped: function () { var e = eqClean(st.eq); return e.head ? e : null; },
+    equipped: function () { var e = eqClean(st.eq); return e.head || e.kill ? e : null; },
     refresh: loadMine
   };
 })();

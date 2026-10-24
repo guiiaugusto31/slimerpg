@@ -153,7 +153,7 @@
   function onMsg(m) {
     switch (m.t) {
       case 'init':
-        S.id = m.id; S.joined = true; S.mode = m.mode || 'classic'; S.best = m.best || [];
+        S.id = m.id; S.joined = true; S.joinAt = Date.now(); SND.enter(); S.mode = m.mode || 'classic'; S.best = m.best || [];
         updateModeChip();
         m.roster.forEach(function (r) { S.roster[r.id] = r; });
         $('title').hidden = true; $('hud').hidden = false;
@@ -477,6 +477,24 @@
     }
     c.innerHTML = h; c.hidden = false;
   }
+  // Cronômetro pequeno no canto inferior esquerdo (clássico e cooperativo): quanto tempo a luta contra o dragão já durou.
+  function updateFightChip() {
+    var c = $('fightChip'), B = S.boss;
+    if (!c) return;
+    if (!S.joined || S.mode === 'pvp' || !B || B[4] !== 1 || !B[6]) { c.hidden = true; return; }
+    c.textContent = 'Dragão ' + fmtTime(B[6]); c.hidden = false;
+  }
+  // Relógios: embaixo à esquerda, o tempo desde que você entrou na floresta; em cima, quanto falta para o dragão renascer (só aparece com ele caído)
+  function fmtClock(s) { s = Math.max(0, Math.floor(s)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + ('0' + m).slice(-2) : m) + ':' + ('0' + x).slice(-2); }
+  function updateClocks() {
+    var sc = $('sessChip'), rc = $('respChip'), B = S.boss;
+    if (!sc || !rc) return;
+    if (!S.joined || !S.joinAt) { sc.hidden = true; rc.hidden = true; return; }
+    sc.textContent = 'Tempo de jogo ' + fmtClock((Date.now() - S.joinAt) / 1000); sc.hidden = false;
+    if (B && B[4] === 3 && B[5] > 0) { rc.innerHTML = 'Dragão renasce em <b>' + fmtClock(B[5]) + '</b>'; rc.hidden = false; } else rc.hidden = true;
+  }
+  setInterval(updateClocks, 250);
+  setInterval(function () { updateFightChip(); }, 250);
   setInterval(function () { if (S.joined) updateModeChip(); }, 250);
   function fmtTime(s) { return Math.floor(s / 60) + ':' + ('0' + Math.floor(s % 60)).slice(-2); }
   function itemReq(it, stats) {
@@ -547,7 +565,8 @@
 
   /* ======================= rankings ======================= */
   // Duas listas vindas do servidor (/api/ranking): PvP (quem chegou ao nível 20, por abates) e Dragão (menor tempo de jogo até a 1ª vitória).
-  var rank = { tab: 'pvp', data: null, busy: false, err: false };
+  var rank = { mode: 'classic', tab: 'pvp', per: 'week', data: null, busy: false, err: false };
+  var RANK_MODES = { classic: ['pvp', 'dragon'], pvp: ['pvpm'], pve: ['coop'] }; // cada modo tem o seu ranking (o Clássico tem dois: abates e dragão); PvE = modo Cooperativo
   function fmtDur(sec) {
     sec = Math.max(0, Math.round(sec));
     var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
@@ -569,31 +588,72 @@
     parts.forEach(function (p) { var e = document.createElement('span'); e.className = p[0]; e.textContent = p[1]; li.appendChild(e); });
     return li;
   }
+  var RANK_HINT = {
+    pvp: 'Modo Clássico. Quem já chegou ao nível 20, pelos abates de jogadores (vítimas do nível 8 para cima; a mesma vítima só conta de novo depois de 5 minutos).',
+    dragon: 'Modo Clássico. Menor tempo de jogo (conectado, somando todas as sessões) até derrotar o Dragão ancestral pela primeira vez.',
+    coop: 'Modo Cooperativo. Menor tempo de luta, em minutos, da primeira pancada até o Dragão ancestral cair (o cronômetro da sala). Vale o melhor tempo de cada conta.',
+    pvpm: 'Modo PvP. Abates de jogadores de qualquer nível (a mesma vítima só conta de novo depois de 5 minutos).'
+  };
+  var RANK_EMPTY = {
+    pvp: 'Ninguém com conta chegou ao nível 20 ainda. Seja o primeiro.',
+    dragon: 'Ninguém derrotou o dragão ainda. Só quem está no nível 20 consegue machucá-lo.',
+    coop: 'Nenhuma equipe derrubou o dragão no cooperativo ainda.',
+    pvpm: 'Ninguém fez abates no modo PvP ainda.'
+  };
+  var RANK_HINT_WEEK = {
+    pvp: 'Modo Clássico, esta semana: abates de jogadores (a mesma vítima só conta de novo depois de 5 minutos).',
+    dragon: 'Modo Clássico, esta semana: menor tempo de luta contra o Dragão ancestral.',
+    coop: 'Modo Cooperativo, esta semana: menor tempo de luta da equipe contra o Dragão ancestral.',
+    pvpm: 'Modo PvP, esta semana: abates de jogadores de qualquer nível.'
+  };
+  function fmtLeft(sec) { var d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60); return d ? d + ' d ' + h + ' h' : h ? h + ' h ' + m + ' min' : m + ' min'; }
   function renderRank() {
-    var list = $('rankList'), d = rank.data, pvp = rank.tab === 'pvp';
-    Array.prototype.forEach.call($('rankTabs').querySelectorAll('[data-tab]'), function (b) { b.setAttribute('aria-selected', String(b.dataset.tab === rank.tab)); });
-    $('rankHint').textContent = pvp
-      ? 'Quem já chegou ao nível 20, pelos abates de jogadores (vítimas do nível 8 para cima; a mesma vítima só conta de novo depois de 5 minutos).'
-      : 'Menor tempo de jogo (conectado, somando todas as sessões) até derrotar o Dragão ancestral pela primeira vez.';
+    var list = $('rankList'), d = rank.data, tab = rank.tab;
+    var group = RANK_MODES[rank.mode] || RANK_MODES.classic;
+    Array.prototype.forEach.call($('rankMode').querySelectorAll('[data-rmode]'), function (b) { b.setAttribute('aria-selected', String(b.dataset.rmode === rank.mode)); });
+    Array.prototype.forEach.call($('rankTabs').querySelectorAll('[data-tab]'), function (b) { b.hidden = group.indexOf(b.dataset.tab) < 0; b.setAttribute('aria-selected', String(b.dataset.tab === tab)); });
+    $('rankTabs').hidden = group.length < 2;
+    var wk = rank.per === 'week';
+    Array.prototype.forEach.call($('rankPer').querySelectorAll('[data-per]'), function (b) { b.setAttribute('aria-selected', String(b.dataset.per === rank.per)); });
+    $('rankHint').textContent = wk ? RANK_HINT_WEEK[tab] + (d && d.week ? ' Zera em ' + fmtLeft(d.week.endsIn) + ' (segunda-feira, 0h, horário de Brasília).' : '') : RANK_HINT[tab];
     list.textContent = '';
     $('rankYou').textContent = ''; $('rankNote').textContent = '';
     if (rank.busy && !d) { list.appendChild(rankRow('msg', [['', 'Carregando…']])); return; }
     if (!d) { list.appendChild(rankRow('msg', [['', rank.err ? 'Os rankings não estão disponíveis agora. Eles precisam do servidor com contas ligadas (não funcionam na versão de teste).' : '']])); return; }
-    var rows = pvp ? d.pvp : d.dragon;
-    if (!rows.length) list.appendChild(rankRow('msg', [['', pvp ? 'Ninguém com conta chegou ao nível 20 ainda. Seja o primeiro.' : 'Ninguém derrotou o dragão ainda. Só quem está no nível 20 consegue machucá-lo.']]));
+    var rows = (wk ? (d.week && d.week[tab]) : d[tab]) || [];
+    if (!rows.length) list.appendChild(rankRow('msg', [['', wk ? 'Ninguém pontuou nesta semana ainda. Seja o primeiro.' : RANK_EMPTY[tab]]]));
     rows.forEach(function (r) {
-      if (pvp) list.appendChild(rankRow(r.me ? 'me' : '', [['pos', r.n], ['nm', r.name], ['val', r.kills + (r.kills === 1 ? ' abate' : ' abates')]]));
-      else {
-        var li = rankRow(r.me ? 'me' : '', [['pos', r.n], ['nm', r.name], ['val', fmtDur(r.play)], ['sub', 'luta de ' + fmtDur(r.fight) + (r.wins > 1 ? ', ' + r.wins + ' vitórias' : '')]]);
-        list.appendChild(li);
-      }
+      var ab = function (n) { return n + (n === 1 ? ' abate' : ' abates'); };
+      if (tab === 'pvp' || tab === 'pvpm') list.appendChild(rankRow(r.me ? 'me' : '', [['pos', r.n], ['nm', r.name], ['val', ab(r.kills)]]));
+      else if (tab === 'coop') list.appendChild(rankRow(r.me ? 'me' : '', [['pos', r.n], ['nm', r.name], ['val', fmtDur(r.fight)], ['sub', r.wins + (r.wins === 1 ? ' vitória' : ' vitórias')]]));
+      else if (wk) list.appendChild(rankRow(r.me ? 'me' : '', [['pos', r.n], ['nm', r.name], ['val', fmtDur(r.fight)], ['sub', r.wins + (r.wins === 1 ? ' vitória' : ' vitórias')]]));
+      else list.appendChild(rankRow(r.me ? 'me' : '', [['pos', r.n], ['nm', r.name], ['val', fmtDur(r.play)], ['sub', 'luta de ' + fmtDur(r.fight) + (r.wins > 1 ? ', ' + r.wins + ' vitórias' : '')]]));
     });
-    var y = d.you;
-    if (!y) $('rankYou').textContent = 'Só quem joga com conta entra nos rankings. Entre ou crie uma conta na tela inicial.';
-    else if (pvp) $('rankYou').textContent = y.crowned ? 'Você: ' + y.posPvp + 'º, com ' + y.kills + (y.kills === 1 ? ' abate.' : ' abates.') : 'Chegue ao nível 20 para entrar neste ranking. Seus abates até lá já estão sendo contados (' + y.kills + ').';
-    else $('rankYou').textContent = y.dragon ? 'Você: ' + y.posDragon + 'º, com ' + fmtDur(y.dragon.play) + ' de jogo.' : 'Você já jogou ' + fmtDur(y.play) + '. Derrote o dragão para entrar neste ranking.';
+    var y = d.you, yt = '', yw = y && y.week;
+    if (wk && y && yw) {
+      var ab2 = function (n) { return n + (n === 1 ? ' abate' : ' abates'); };
+      if (tab === 'pvp') yt = yw.pvp ? 'Você: ' + yw.posPvp + 'º na semana, com ' + ab2(yw.pvp) + '.' : 'Você ainda não fez abates no Clássico nesta semana.';
+      else if (tab === 'pvpm') yt = yw.pk ? 'Você: ' + yw.posPvpm + 'º na semana, com ' + ab2(yw.pk) + '.' : 'Você ainda não fez abates no PvP nesta semana.';
+      else if (tab === 'coop') yt = yw.coop ? 'Você: ' + yw.posCoop + 'º na semana, com ' + fmtDur(yw.coop) + ' de luta.' : 'Derrube o dragão no Cooperativo para entrar neste ranking da semana.';
+      else yt = yw.dragon ? 'Você: ' + yw.posDragon + 'º na semana, com ' + fmtDur(yw.dragon) + ' de luta.' : 'Derrote o dragão no Clássico para entrar neste ranking da semana.';
+    } else if (!y) yt = 'Só quem joga com conta entra nos rankings. Entre ou crie uma conta na tela inicial.';
+    else if (tab === 'pvp') yt = y.crowned ? 'Você: ' + y.posPvp + 'º, com ' + y.kills + (y.kills === 1 ? ' abate.' : ' abates.') : 'Chegue ao nível 20 para entrar neste ranking. Seus abates até lá já estão sendo contados (' + y.kills + ').';
+    else if (tab === 'pvpm') yt = y.pk ? 'Você: ' + y.posPvpm + 'º, com ' + y.pk + (y.pk === 1 ? ' abate.' : ' abates.') : 'Você ainda não fez abates no modo PvP.';
+    else if (tab === 'coop') yt = y.coop ? 'Você: ' + y.posCoop + 'º, com ' + fmtDur(y.coop.fight) + ' de luta.' : 'Derrube o dragão no modo Cooperativo para entrar neste ranking.';
+    else yt = y.dragon ? 'Você: ' + y.posDragon + 'º, com ' + fmtDur(y.dragon.play) + ' de jogo.' : 'Você já jogou ' + fmtDur(y.play) + '. Derrote o dragão para entrar neste ranking.';
+    $('rankYou').textContent = yt;
     $('rankNote').textContent = d.persistent === false ? 'Neste servidor os rankings zeram quando ele reinicia (sem banco de dados ligado).' : '';
   }
+  $('rankPer').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-per]') : null;
+    if (!b) return;
+    rank.per = b.dataset.per; renderRank();
+  });
+  $('rankMode').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-rmode]') : null;
+    if (!b || !RANK_MODES[b.dataset.rmode]) return;
+    rank.mode = b.dataset.rmode; rank.tab = RANK_MODES[rank.mode][0]; renderRank();
+  });
   $('rankTabs').addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('[data-tab]') : null;
     if (!b) return;
@@ -823,6 +883,15 @@
   $('respawnBtn').addEventListener('click', respawn);
   // Voltar ao menu: sai da sala (o progresso já está guardado) e recarrega a tela inicial
   $('menuBtn').addEventListener('click', function () { S.failed = true; try { ws.close(); } catch (x) { /* já fechou */ } location.reload(); });
+  var menuArm = 0; // "Voltar ao menu" durante a partida: pede um segundo toque para não sair sem querer
+  $('btnMenu').addEventListener('click', function () {
+    var b = $('btnMenu');
+    if (!menuArm) {
+      b.textContent = 'Sair? Toque de novo'; menuArm = setTimeout(function () { menuArm = 0; b.textContent = 'Voltar ao menu'; }, 3000);
+      return;
+    }
+    clearTimeout(menuArm); S.failed = true; try { ws.close(); } catch (x) { /* já fechou */ } location.reload();
+  });
 
   /* ======================= desenho ======================= */
   function resize() {

@@ -85,6 +85,7 @@ const server = http.createServer((req, res) => {
     }));
   }
   if (url === '/api/ranking' && req.method === 'GET') return serveRanking(req, res);
+  if (url === '/api/ranking/claim' && req.method === 'POST') return claimPrize(req, res);
   if (url.startsWith('/api/') || url === '/admin/skin') { // contas por e-mail (accounts.js)
     if (accounts && accounts.handle(req, res, url)) return;
     res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -109,6 +110,25 @@ async function serveRanking(req, res) {
   } catch (e) {
     console.error('Ranking: erro:', e && e.message);
     if (!res.headersSent) { res.writeHead(500, { 'Content-Type': 'application/json' }); res.end('{"error":"Rankings indisponíveis agora."}'); }
+  }
+}
+
+// POST /api/ranking/claim: quem fechou a semana passada em 1º lugar de algum ranking resgata a skin do prêmio (o servidor confere; o cliente não decide nada)
+async function claimPrize(req, res) {
+  const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
+  try {
+    if (!ranking || !accounts) return reply(404, { error: 'Rankings indisponíveis.' });
+    await rankingReady;
+    const m = /^Bearer ([0-9a-f]{64})$/.exec(req.headers.authorization || '');
+    const acc = m ? await accounts.auth(m[1]) : null;
+    if (!acc) return reply(401, { error: 'Entre na sua conta para resgatar.' });
+    const boards = ranking.claimable(acc.id), skins = boards.map((k) => D.WEEK_PRIZES[k].skin);
+    if (!skins.length) return reply(200, { ok: true, granted: [], own: accounts.skinsOf(acc).own });
+    const own = await accounts.grantSkins(acc.id, skins);
+    reply(200, { ok: true, granted: skins, own });
+  } catch (e) {
+    console.error('Prêmio: erro:', e && e.message);
+    if (!res.headersSent) reply(500, { error: 'Não deu para resgatar agora.' });
   }
 }
 
@@ -339,16 +359,18 @@ function killPlayer(room, v, src) {
   v.alive = false; v.mx = 0; v.my = 0;
   const by = src ? (src.isPlayer ? src.name : src.def.name) : '???';
   ev(room, ['x', Math.round(v.x), Math.round(v.y), -1, v.id]);
+  const tomb = src && src.isPlayer && src !== v && src.sk ? Math.floor(src.sk / 100) : 0; // prêmio semanal: lápide (1) ou lápide dourada (2) de quem abateu
+  if (tomb) fx(room, 'tomb', v.x, v.y, 0, 40, 'faca', tomb);
   send(v, { t: 'death', by, lvl: old });
   if (src && src.isPlayer && src !== v && !src.gone && src.alive) {
     if (old >= D.PK_MIN_LEVEL) { // só vítimas de nível razoável contam (para a missão e para o ranking de PvP): evita caçar novatos
       src.pk++;
-      if (ranking && src.acct) ranking.pvpKill(src.acct.id, v.acct ? 'a' + v.acct.id : 'g' + String(v.name).toLowerCase());
+      if (ranking && src.acct) { const vk = v.acct ? 'a' + v.acct.id : 'g' + String(v.name).toLowerCase(); if (room.mode === 'classic') ranking.pvpKill(src.acct.id, vk); }
     }
     addXp(room, src, Math.floor(D.xpNeed(old) * D.PVP_XP_FRAC)); // 40% do XP do nível atual da vítima
     checkQuests(room, src);
     src.saveDirty = true;
-    if (room.mode === 'pvp') { src.rk = (src.rk || 0) + 1; src.rs = (src.rs || 0) + 1; } // contador da sala: abates e série (mortes seguidas sem morrer)
+    if (room.mode === 'pvp') { src.rk = (src.rk || 0) + 1; src.rs = (src.rs || 0) + 1; if (ranking && src.acct) ranking.modeKill(src.acct.id, v.acct ? 'a' + v.acct.id : 'g' + String(v.name).toLowerCase()); } // contador da sala: abates e série (mortes seguidas sem morrer)
     const streak = room.mode === 'pvp' && src.rs >= 3 ? ' — série de ' + src.rs + '!' : '';
     feed(room, src.name + ' derrotou ' + v.name + ' (nv ' + old + ')' + streak);
   } else {
@@ -1015,16 +1037,23 @@ function bossTarget(room, m) {
   return best;
 }
 
+// Recarga do dragão: com menos de 30% de vida ela cai 20%; com menos de 10%, cai 40% (vale para sopro, pancada no chão e garra)
+function bossCdMul(m) {
+  let mul = 1;
+  for (const t of D.BOSS.cdTiers) if (m.hp < m.maxHp * t.hp) mul = Math.min(mul, t.mul);
+  return mul;
+}
+
 function bossStartCast(room, m, kind, ang) {
   const def = m.def, S = kind === 0 ? def.breath : def.slam;
   const rage = m.hp < m.maxHp * D.BOSS.rage;
   m.cast = { kind, t: S.wind * (rage ? 0.85 : 1), ang };
   m.gcd = 0.9;
   if (kind === 0) {
-    m.cdB = S.cd * (rage ? 0.65 : 1);
+    m.cdB = S.cd * bossCdMul(m);
     ev(room, ['w', Math.round(m.x), Math.round(m.y), 0, +ang.toFixed(2), S.range, +m.cast.t.toFixed(2), S.width]);
   } else {
-    m.cdS = S.cd * (rage ? 0.65 : 1);
+    m.cdS = S.cd * bossCdMul(m);
     ev(room, ['w', Math.round(m.x), Math.round(m.y), 1, 0, S.radius, +m.cast.t.toFixed(2), 0]);
   }
 }
@@ -1101,7 +1130,7 @@ function updateBoss(room, m) {
     if (m.atkT <= 0) {
       ev(room, ['k', Math.round(m.x), Math.round(m.y), m.id, +ang.toFixed(2)]);
       hit(room, m, tg, def.dmg * rnd(0.9, 1.1), 'phys');
-      m.atkT = def.atkCd * (rage ? 0.7 : 1);
+      m.atkT = def.atkCd * bossCdMul(m);
       fx(room, 'd_claw', m.x, m.y, ang, m.r + 46, 'dragao', 6);
     }
   } else {
@@ -1123,7 +1152,10 @@ function killBoss(room, m) {
   const names = [];
   for (const p of winners) {
     p.kills[m.key] = (p.kills[m.key] || 0) + 1;
-    if (ranking && p.acct) {
+    if (ranking && p.acct && room.mode === 'coop') {
+      const rec = ranking.coopKill(p.acct.id, room.now - (m.fightT0 === undefined ? room.now : m.fightT0));
+      if (rec) send(p, { t: 'toast', m: 'Seu melhor tempo no cooperativo! Veja em Rankings.' });
+    } else if (ranking && p.acct && room.mode === 'classic') {
       const first = ranking.dragonKill(p.acct.id, room.now - (m.fightT0 === undefined ? room.now : m.fightT0));
       if (first) send(p, { t: 'toast', m: 'Primeira vitória sobre o dragão! Seu tempo de jogo: ' + fmtDur(first.play) + '. Veja em Rankings.' });
     }
@@ -1413,4 +1445,4 @@ if (!SIM) {
 }
 
 // exportados para test/sim.js e para o simulador (tools/simular.js)
-module.exports = { server, wss, rooms, online, getAccounts: () => accounts, getRanking: () => ranking, fmtDur, recalc, addXp, fx, ev, newRoom, makePlayer, spawnPlayer, updateRoom, hit, giveRandom, checkQuests, DT, TICK, BASE_SPEED };
+module.exports = { bossCdMul, server, wss, rooms, online, getAccounts: () => accounts, getRanking: () => ranking, fmtDur, recalc, addXp, fx, ev, newRoom, makePlayer, spawnPlayer, updateRoom, hit, giveRandom, checkQuests, DT, TICK, BASE_SPEED };

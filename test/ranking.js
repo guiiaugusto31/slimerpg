@@ -64,6 +64,24 @@ async function unit(label, makeStore, reopen) {
   const pub = JSON.stringify(rk.boards(a));
   ok(!/@|"acc"|email|teste\.com/.test(pub), 'as listas públicas não vazam e-mail nem número da conta');
 
+  // rankings dos modos PvP e Cooperativo
+  ok(rk.modeKill(c, 'a' + d) === true && rk.modeKill(c, 'a' + d) === false && rk.modeKill(c, 'a' + a) === true && rk.modeKill(d, 'a' + c) === true, 'modo PvP: abate de qualquer nível conta, repetir a mesma vítima logo em seguida não');
+  bd = rk.boards(c);
+  ok(bd.pvpm.map((r) => r.name).join() === 'Caio,Duda' && bd.pvpm[0].kills === 2 && bd.you.pk === 2 && bd.you.posPvpm === 1, 'ranking de abates do PvP ordena por abates');
+  ok(rk.coopKill(a, 600) === true && rk.coopKill(a, 700) === false && rk.coopKill(a, 500) === true && rk.coopKill(b, 450) === true, 'coop: só o melhor tempo de luta da conta fica');
+  bd = rk.boards(a);
+  ok(bd.coop.map((r) => r.name + r.fight).join() === 'Bia450,Ana500' && bd.coop[1].wins === 3 && bd.you.posCoop === 2, 'ranking do coop vai do menor para o maior tempo de luta');
+
+  // semanal: os mesmos eventos contam na semana e no geral; na semana seguinte o placar semanal zera e o geral fica
+  bd = rk.boards(c);
+  ok(bd.week.pvpm.map((r) => r.name + r.kills).join() === 'Caio2,Duda1' && bd.week.coop.map((r) => r.name + r.fight).join() === 'Bia450,Ana500' && bd.week.endsIn > 0 && bd.you.week.pk === 2, 'semanal: abates e tempos da semana aparecem junto com o geral');
+  t += 8 * 86400000;
+  bd = rk.boards(c);
+  ok(bd.week.pvpm.length === 0 && bd.week.coop.length === 0 && bd.pvpm.length === 2 && bd.coop.length === 2, 'semana nova: o semanal zera, o geral permanece');
+  rk.modeKill(c, 'a' + b); rk.coopKill(b, 300);
+  bd = rk.boards(c);
+  ok(bd.week.pvpm.length === 1 && bd.week.pvpm[0].kills === 1 && bd.pvpm[0].kills === 3 && bd.week.coop[0].fight === 300 && bd.coop[0].fight === 300, 'a nova semana recomeça do zero (1 abate) e o geral soma (3)');
+
   // gravar e reabrir
   await rk.flush();
   const store2 = await reopen(store);

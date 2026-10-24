@@ -39,7 +39,7 @@
   }
   // Remove um fundo liso (cinza/branco) ligado às bordas da imagem e reduz para 256 px.
   function prepare(base, im) {
-    if (base === 'mapa' || /^fx_/.test(base)) return im; // o mapa e os efeitos de fogo (já preparados com transparência) ficam como vieram
+    if (base === 'mapa' || /^fx_|^hat_/.test(base)) return im; // o mapa e os efeitos de fogo (já preparados com transparência) ficam como vieram
     var max = /^mob_dragao/.test(base) ? 512 : /^slime_/.test(base) ? 384 : 256, sc = Math.min(1, max / Math.max(im.width, im.height)); // o dragão é enorme: guarda mais resolução
     var w = Math.max(1, Math.round(im.width * sc)), h = Math.max(1, Math.round(im.height * sc));
     var c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -235,7 +235,7 @@
       g.drawImage(sp, -M.ax * w, -M.ay * h, w, h);
       if (o.cloth) drawCloth(g, o.cloth, base, -M.ax * w, -M.ay * h, w / sp.width, h / sp.height, false);
       if (skin && skin.head && pose !== 'hurt' && !(pose === 'attack' && !angry)) { // chapéu (não aparece na pose de dano nem no desenho "atacando" com braços próprios)
-        g.save(); g.translate(-M.ax * w, -M.ay * h); g.scale(w, h); drawAccessories(g, skin, base, t); g.restore();
+        g.save(); g.translate(-M.ax * w, -M.ay * h); g.scale(w, h); drawAccessories(g, skin, base, t, w, h); g.restore();
       }
       if (o.flash > 0) {
         g.globalAlpha *= Math.min(0.85, o.flash); g.drawImage(slimeFlat(base, color, 'rgb(255,255,255)'), -M.ax * w, -M.ay * h, w, h);
@@ -384,11 +384,67 @@
       g.strokeStyle = '#f4f0e6'; g.lineWidth = 0.012; g.beginPath(); g.moveTo(-0.07, -0.03); g.lineTo(0.07, -0.13); g.moveTo(0.07, -0.03); g.lineTo(-0.07, -0.13); g.stroke();
       skSparkle(g, 0.3, -0.02, 0.016, Math.max(0, Math.sin(t * 2.1)), 'rgba(255,230,140,A)');
       g.restore();
-    }
+    },
+    dragao: function (g, prof, t) { dragonHead(g, prof, t, false); }, // prêmio semanal (cooperativo)
+    dragao_ouro: function (g, prof, t) { dragonHead(g, prof, t, true); } // prêmio semanal (clássico)
   };
-  function drawAccessories(g, skin, base, t) {
+  // Cabeça de dragão apoiada no topo do slime: chifres para trás, focinho para a frente, olho com pupila de fenda.
+  function dragonHead(g, prof, t, gold) {
+    var C = gold ? { b: '#e3ac1c', d: '#a8740d', l: '#ffe483', h: '#fff3c4', e: '#ff4a2a' } : { b: '#3f9a4d', d: '#246a33', l: '#8bdc74', h: '#eadfc2', e: '#ffd23a' };
+    g.save(); hatBase(g, prof, t, 0, 0.055, 0.04);
+    // chifres (atrás da cabeça)
+    [[-0.07, -0.12, -0.2, -0.29, -0.16, -0.13], [0.02, -0.14, -0.08, -0.3, -0.04, -0.14]].forEach(function (h) {
+      g.beginPath(); g.moveTo(h[0], h[1]); g.quadraticCurveTo(h[2] - 0.03, h[3] + 0.08, h[2], h[3]); g.quadraticCurveTo(h[4] + 0.01, h[5] - 0.04, h[4] + 0.07, h[5] + 0.02); g.closePath();
+      g.fillStyle = C.h; g.fill(); skOutline(g);
+    });
+    // cabeça
+    g.beginPath(); g.moveTo(-0.23, 0.025); g.quadraticCurveTo(-0.25, -0.15, -0.03, -0.165); g.quadraticCurveTo(0.15, -0.17, 0.27, -0.085);
+    g.quadraticCurveTo(0.33, -0.05, 0.31, -0.015); g.quadraticCurveTo(0.2, 0.035, 0.08, 0.03); g.quadraticCurveTo(-0.08, 0.05, -0.23, 0.025); g.closePath();
+    var gr = g.createLinearGradient(0, -0.17, 0, 0.04); gr.addColorStop(0, C.l); gr.addColorStop(0.45, C.b); gr.addColorStop(1, C.d);
+    g.fillStyle = gr; g.fill(); skOutline(g);
+    // escamas e dentes
+    g.strokeStyle = C.d; g.lineWidth = 0.011; g.beginPath();
+    [[-0.15, -0.08], [-0.08, -0.12], [-0.12, -0.02], [-0.03, -0.07]].forEach(function (q) { g.moveTo(q[0] - 0.025, q[1]); g.quadraticCurveTo(q[0], q[1] + 0.03, q[0] + 0.025, q[1]); });
+    g.stroke();
+    g.fillStyle = '#fffaf0'; [0.16, 0.2, 0.245].forEach(function (x) { g.beginPath(); g.moveTo(x - 0.014, 0.024); g.lineTo(x, 0.058); g.lineTo(x + 0.014, 0.022); g.closePath(); g.fill(); });
+    // olho, sobrancelha e narina
+    g.fillStyle = C.e; g.beginPath(); g.ellipse(0.1, -0.09, 0.034, 0.026, -0.2, 0, 7); g.fill(); skOutline(g, 0.012);
+    g.fillStyle = '#14121a'; g.beginPath(); g.ellipse(0.105, -0.09, 0.008, 0.022, -0.2, 0, 7); g.fill();
+    g.strokeStyle = C.d; g.lineWidth = 0.02; g.beginPath(); g.moveTo(0.05, -0.13); g.lineTo(0.15, -0.115); g.stroke();
+    g.fillStyle = '#14121a'; g.beginPath(); g.ellipse(0.26, -0.06, 0.012, 0.008, 0.4, 0, 7); g.fill();
+    skShine(g, -0.06, -0.14, 0.035, 0.012, -0.2);
+    if (gold) skSparkle(g, 0.22, -0.14, 0.017, Math.max(0, Math.sin(t * 2.4)), 'rgba(255,240,170,A)');
+    else { var puff = (t * 0.8) % 1; g.fillStyle = 'rgba(210,210,210,' + (0.45 * (1 - puff)).toFixed(2) + ')'; g.beginPath(); g.arc(0.3 + puff * 0.04, -0.07 - puff * 0.12, 0.012 + puff * 0.02, 0, 7); g.fill(); } // fumacinha da narina
+    g.restore();
+  }
+  // Chapéus em arte de imagem (public/img/hat_<id>.webp, fundo já recortado). w = largura do chapéu (fração da largura do slime),
+  // ay = altura (fração do chapéu) que fica no topo da cabeça, lift = quanto afunda na cabeça, tilt = inclinação. Sem a imagem, usa o desenho por código.
+  var HAT_IMG = {
+    cogumelo:   { w: 0.72, ay: 0.97, lift: 0.07, tilt: -0.05 },
+    marinheiro: { w: 0.78, ay: 0.78, lift: 0.105, tilt: 0.03 },
+    cartola:    { w: 0.64, ay: 0.80, lift: 0.15, tilt: -0.05, flip: true },
+    mago:       { w: 0.84, ay: 0.88, lift: 0.105, tilt: -0.04 },
+    pirata:     { w: 0.82, ay: 0.74, lift: 0.115, tilt: 0 }
+  };
+  function spriteHat(g, id, prof, t, w, h) {
+    var C = HAT_IMG[id], im = IMG['hat_' + id];
+    if (!C || !im || !w || !h) return false;
+    var pw = C.w * w, ph = pw * im.height / im.width * (C.sy || 1);
+    g.save();
+    g.translate(0.5, topAt(prof, 0.5) + C.lift + Math.sin(t * 3.4 + 0.8) * 0.005);
+    g.scale(1 / w, 1 / h); // de volta a pixels, para o chapéu não esticar junto com o desenho do slime
+    g.rotate(C.tilt + Math.sin(t * 2.1) * 0.015);
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    if (C.flip) g.scale(-1, 1); // espelha o chapéu (ex.: fivela do outro lado)
+    g.drawImage(im, -pw / 2, -ph * C.ay, pw, ph);
+    g.restore();
+    return true;
+  }
+  function drawAccessories(g, skin, base, t, w, h) {
     if (!skin || !skin.head || !HATS[skin.head]) return;
-    HATS[skin.head](g, topProfile(base), t);
+    var prof = topProfile(base);
+    if (spriteHat(g, skin.head, prof, t, w, h)) return;
+    HATS[skin.head](g, prof, t);
   }
 
   /* ---------- roupa, bracinhos e mãos ---------- */

@@ -236,7 +236,7 @@ function create(opts) {
 
   /* ---- loja de skins (só visual) ---- */
   const ADMIN_TOKEN = String(env.ADMIN_TOKEN || '');
-  const CONTATO = String(env.CONTATO_EMAIL || 'guiiaugusto_32@outlook.com').trim();
+  const CONTATO = String(env.CONTATO_EMAIL || 'guiaugusto_32@outlook.com').trim();
   const PIX = { key: String(env.PIX_CHAVE || CONTATO).trim(), name: env.PIX_NOME || 'SLIMERPG', city: env.PIX_CIDADE || 'BRASIL' };
   const lojaPacks = (() => {
     const out = [];
@@ -262,6 +262,8 @@ function create(opts) {
     if (typeof opts.onSkins === 'function') { try { opts.onSkins(accId, next); } catch (e) { /* o jogo online é só um aviso */ } }
     return next;
   });
+  // Libera skins para uma conta (prêmios do ranking). Devolve a lista de skins que ela passou a ter.
+  const grantSkins = async (accId, ids) => { const next = await setSkins(accId, (sk) => { sk.own = [...new Set(sk.own.concat(ids.filter((id) => D.SKINS[id])))]; return sk; }); return next ? next.own : null; };
   async function adminSkin(req, res, ip) {
     if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 16) return fail(res, 503, 'Liberação desativada: defina ADMIN_TOKEN (16+ caracteres) no servidor.');
     const h = hits.get('adm:' + ip);
@@ -470,7 +472,7 @@ function create(opts) {
   }
   async function close() { await flush(); if (store.close) await store.close(); clearInterval(gc); }
 
-  return { handle, auth, skinsOf, loadSave, saveProgress, flush, release, ready, close, allowImport, store, status: () => ({ kind: store.kind, persistent: !!store.persistent, mail: !!mailer }) };
+  return { handle, auth, skinsOf, grantSkins, loadSave, saveProgress, flush, release, ready, close, allowImport, store, status: () => ({ kind: store.kind, persistent: !!store.persistent, mail: !!mailer }) };
 }
 
 module.exports = { create, FileStore, PgStore, hashPw, checkPw, EMAIL_RE };
