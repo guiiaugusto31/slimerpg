@@ -303,7 +303,7 @@
         if (pe && pe.w && pe.w.length) {
           var idx = pe.w.length === 1 ? 0 : Math.min(e[4], pe.w.length - 1), it = ITEM[pe.w[idx]];
           if (it) {
-            pe.sw = pe.sw || []; pe.sw[idx] = { age: 0, dur: FX.swingDur(it.fam, e[6]), a: e[5], skill: e[6], st: FX.STYLE[it.fam] || 'stab' };
+            pe.sw = pe.sw || []; pe.sw[idx] = { age: 0, dur: FX.swingDur(it.fam, e[6]), a: e[5], skill: e[6], st: FX.STYLE[it.fam] || 'stab', reach: e[7], span: e[8] }; // reach/span: área de dano do corte (espada e chicote)
             if (pe.sw[idx].st === 'smash') { // a poeira sobe quando a arma encosta no chão (perto do fim da pancada)
               var reach = (pe.rr || 20) + 34;
               fxs.push({ x: e[1] + Math.cos(e[5]) * reach, y: e[2] + Math.sin(e[5]) * reach * 0.8, kind: 'dust', a: 0, size: e[6] ? 64 : 40, fam: 'faca', tier: 1, extra: 0, age: -pe.sw[idx].dur * 0.62 });

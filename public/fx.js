@@ -29,6 +29,82 @@
     p = { c: base, h: mix(base, '#ffffff', tier >= 5 ? 0.5 : 0.35), d: dark(base, 0.4) }; // só a cor da arma e um tom claro dela
     return (palCache[key] = p);
   }
+  // Habilidades de espada e chicote saem em vermelho (o golpe normal fica na cor da arma), para não confundir os dois.
+  var SKILL_RED = { c: '#ff1414', h: '#ff6a5c', d: '#5c0f0a' }, redCache = {};
+  // O golpe normal de espada e chicote sai em branco e azul (a mesma animação da habilidade, que é vermelha).
+  var SLASH_BLUE = { c: '#2f8cff', h: '#d6ecff', d: '#0b2a5c' };
+  // A arte azul do corte vira vermelha trocando os canais (o centro branco continua quente); sem filtros de canvas, que o Safari não tem.
+  function tintRed(img, key) {
+    if (redCache[key]) return redCache[key];
+    if (!img.width) return img;
+    try {
+      var w = Math.min(img.width, 640), h = Math.round(img.height * w / img.width), c = document.createElement('canvas'), x, d, a, i, r, gg, b;
+      c.width = w; c.height = h; x = c.getContext('2d'); x.drawImage(img, 0, 0, w, h);
+      d = x.getImageData(0, 0, w, h); a = d.data;
+      for (i = 0; i < a.length; i += 4) { r = a[i]; gg = a[i + 1]; b = a[i + 2]; a[i] = Math.min(255, b * 1.1 + r * 0.15); a[i + 1] = gg * 0.2; a[i + 2] = r * 0.3; }
+      x.putImageData(d, 0, 0);
+      return (redCache[key] = c);
+    } catch (e) { return img; }
+  }
+  // A arte do corte é uma meia-lua em "C". Para encaixar na forma do dano, ela é desenrolada numa faixa reta (a crista da meia-lua vira uma linha) e depois
+  // enrolada de novo ao longo do arco do alcance máximo, de uma borda lateral do cone até a outra (hbPath). A crista medida na arte (ângulo em graus → raio,
+  // em pixels da imagem de 1024) e o centro do "C" foram tirados da própria imagem; a ponta de cima fica em -44° e a de baixo em -368° (o brilho do meio em -180°).
+  var CUT = { cx: 450, cy: 250, K: 120, tab: [[-44, 305], [-48, 266], [-56, 233], [-64, 208], [-72, 191], [-80, 178], [-88, 171], [-96, 166], [-104, 164], [-112, 165], [-120, 168], [-128, 175], [-136, 183], [-144, 199], [-152, 220], [-160, 244], [-168, 275], [-176, 312], [-184, 329], [-192, 332], [-200, 327], [-208, 293], [-216, 261], [-224, 237], [-232, 219], [-240, 209], [-248, 200], [-256, 193], [-264, 190], [-272, 190], [-280, 191], [-288, 196], [-296, 204], [-304, 216], [-312, 234], [-320, 255], [-328, 282], [-336, 318], [-344, 362], [-352, 423], [-360, 477], [-368, 515]] }, cutCache = {};
+  function cutRho(psi) {
+    var t = CUT.tab, i = 0;
+    while (i < t.length - 2 && psi < t[i + 1][0]) i++;
+    var k = Math.max(0, Math.min(1, (psi - t[i][0]) / (t[i + 1][0] - t[i][0])));
+    return t[i][1] + (t[i + 1][1] - t[i][1]) * k;
+  }
+  function cutStrip(src, key) {
+    if (cutCache[key]) return cutCache[key];
+    try {
+      var NS = 160, NT = 80, sc = src.width / 1024, c = document.createElement('canvas'), x, i, q, psi, a, rho;
+      c.width = NS; c.height = NT; x = c.getContext('2d');
+      for (i = 0; i < NS; i++) {
+        q = (i + 0.5) / NS;
+        psi = q < 0.5 ? -44 + (-180 + 44) * (q / 0.5) : -180 + (-368 + 180) * ((q - 0.5) / 0.5);
+        a = psi * Math.PI / 180; rho = cutRho(psi) * sc;
+        x.save(); x.beginPath(); x.rect(i, 0, 1, NT); x.clip();
+        x.translate(i + 0.5, NT / 2); x.scale(1, NT / (2 * CUT.K * sc)); x.rotate(Math.PI / 2 - a); x.translate(-(CUT.cx * sc + rho * Math.cos(a)), -(CUT.cy * sc + rho * Math.sin(a)));
+        x.drawImage(src, 0, 0); x.restore();
+      }
+      return (cutCache[key] = c);
+    } catch (e) { return null; }
+  }
+  // A faixa reta é enrolada no leque ponto a ponto (cada pixel da textura procura o seu lugar na faixa, com mistura suave): sem emendas entre fatias.
+  // A textura sai no ângulo 0 (virada para a direita), com a crista em 0.8 do alcance, e é guardada por alcance e abertura; no efeito ela só gira e cresce um pouco.
+  var wtexCache = {}, wtexKeys = [];
+  function cutTex(strip, key, R, ph) {
+    var k = key + '|' + Math.round(R) + '|' + Math.round(ph * 1000);
+    if (wtexCache[k]) return wtexCache[k];
+    try {
+      var NS = strip.width, NT = strip.height, r0 = R * 0.8, th = R * 0.3, C = Math.ceil(r0 + th) + 2, N = 2 * C, c = document.createElement('canvas'), x, od, out, sd;
+      if (!strip._d) strip._d = strip.getContext('2d').getImageData(0, 0, NS, NT).data;
+      sd = strip._d; c.width = N; c.height = N; x = c.getContext('2d'); out = x.createImageData(N, N); od = out.data;
+      var px, py, dx, dy, rho, phi, u, v, iu, iv, fu, fv, i, j, wgt, q, A, r, gr, bl, o, rin = r0 - th, rout = r0 + th, W = [0, 0, 0, 0], idx = [0, 0, 0, 0];
+      for (py = 0; py < N; py++) {
+        dy = py - C + 0.5;
+        for (px = 0; px < N; px++) {
+          dx = px - C + 0.5; rho = Math.sqrt(dx * dx + dy * dy);
+          if (rho < rin || rho >= rout) continue;
+          phi = Math.atan2(dy, dx); if (phi < -ph || phi > ph) continue;
+          u = (phi + ph) / (2 * ph) * NS - 0.5; v = (rho - rin) / (2 * th) * NT - 0.5;
+          iu = Math.floor(u); iv = Math.floor(v); fu = u - iu; fv = v - iv;
+          W[0] = (1 - fu) * (1 - fv); W[1] = fu * (1 - fv); W[2] = (1 - fu) * fv; W[3] = fu * fv;
+          A = 0; r = 0; gr = 0; bl = 0;
+          for (q = 0; q < 4; q++) {
+            i = Math.max(0, Math.min(NS - 1, iu + (q & 1))); j = Math.max(0, Math.min(NT - 1, iv + (q >> 1)));
+            o = (j * NS + i) * 4; wgt = W[q] * sd[o + 3]; A += wgt; r += wgt * sd[o]; gr += wgt * sd[o + 1]; bl += wgt * sd[o + 2];
+          }
+          if (A > 0) { o = (py * N + px) * 4; od[o] = r / A; od[o + 1] = gr / A; od[o + 2] = bl / A; od[o + 3] = A; }
+        }
+      }
+      x.putImageData(out, 0, 0);
+      wtexCache[k] = c; wtexKeys.push(k); if (wtexKeys.length > 14) delete wtexCache[wtexKeys.shift()];
+      return c;
+    } catch (e) { return null; }
+  }
   function rand(seed) { // sorteio rápido e repetível (o mesmo efeito sempre sai igual)
     var s = (seed | 0) || 1;
     return function () { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; };
@@ -77,6 +153,71 @@
     var x = KSTYLE[ka], y = KSTYLE[kb];
     return x === y ? x : ({ '01': 0, '02': 2, '03': 3, '12': 1, '13': 3, '23': 2 })[Math.min(x, y) + '' + Math.max(x, y)];
   }
+  // A forma MÁXIMA da área de dano de um corte em cone, desenhada como luz. É a mesma conta do servidor (inCone): o dano conta a borda do alvo, então para um
+  // alvo de raio rt a abertura em cada distância d é w/2 + asin(rt/d) para cada lado (abre mais perto do corpo) e o alcance vai até f.size (alcance + rt).
+  // O preenchimento cresce junto com a passada da arma (frac 0..1), a borda de fora fica exatamente no alcance máximo e a arte do golpe é recortada nessa forma.
+  function hbHalf(w, rt, d) { return w / 2 + Math.asin(Math.min(1, rt / Math.max(d, 0.001))); }
+  function hbEdge(g, f, w, rt, sgn, d0, n) { var i, d, h; for (i = 0; i <= n; i++) { d = d0 + (f.size - d0) * i / n; h = hbHalf(w, rt, d); g.lineTo(f.x + Math.cos(f.a + sgn * h) * d, f.y + Math.sin(f.a + sgn * h) * d); } }
+  function hbPath(g, f, w, rt, frac) {
+    var R = f.size, ph = hbHalf(w, rt, R), p1 = -ph + 2 * ph * frac, d0 = Math.min(Math.max(rt, 1), R * 0.6), n = 14, i, d, h;
+    g.beginPath(); g.moveTo(f.x, f.y); hbEdge(g, f, w, rt, -1, d0, n);
+    g.arc(f.x, f.y, R, f.a - ph, f.a + p1);
+    if (frac >= 0.999) for (i = n; i >= 0; i--) { d = d0 + (R - d0) * i / n; h = hbHalf(w, rt, d); g.lineTo(f.x + Math.cos(f.a + h) * d, f.y + Math.sin(f.a + h) * d); }
+    g.closePath();
+  }
+  // A arte do corte (meia-lua em "C") desenrolada e enrolada ao longo do arco do alcance máximo: ocupa o leque do dano de uma borda lateral à outra.
+  // Usada pelo golpe normal (arte original, branca e azul) e pela habilidade (a mesma arte pintada de vermelho). frac = quanto da passada já foi feita.
+  function cutWarp(g, f, w, rt, frac, P, img, key, e3, p, a) {
+    var ph = hbHalf(w, rt, f.size), cal = Math.min(1, p * 10) * Math.min(1, a * 1.5), strip = cutStrip(img, key);
+    hbLight(g, f, w, rt, frac, P, Math.min(1, a * 1.5) * Math.min(1, p * 10), 1.1); // a forma máxima do dano inteira, presa ao alcance máximo
+    g.save(); hbPath(g, f, w, rt, frac); g.clip();
+    g.globalAlpha = Math.max(0, Math.min(1, cal));
+    var tex = strip ? cutTex(strip, key, f.size, ph) : null;
+    if (tex) { // textura pronta (arte enrolada no leque), girada para o golpe e crescendo um pouco no começo
+      var kk = (0.66 + 0.14 * e3) / 0.8, C = tex.width / 2;
+      g.translate(f.x, f.y); g.rotate(f.a); g.scale(kk, kk); g.drawImage(tex, -C, -C);
+    } else if (strip) {
+      // reserva: fatias em leque (cada uma dividida em faixas por raio, para a largura acompanhar o arco)
+      var NS = strip.width, NT = strip.height, r0 = f.size * (0.66 + 0.14 * e3), th = f.size * 0.3 * (0.85 + 0.15 * e3);
+      var SL2 = Math.max(24, Math.min(NS, Math.ceil(r0 * 2 * ph / 4))), BD = 6, dph = 2 * ph / SL2, sx = NS / SL2, j, b, phj, rb0, rb1, rm, tw;
+      for (j = 0; j < SL2; j++) {
+        phj = -ph + dph * (j + 0.5); if (phj > -ph + 2 * ph * frac + 0.03) break;
+        g.save(); g.translate(f.x, f.y); g.rotate(f.a + phj); g.transform(0, 1, 1, 0, 0, 0);
+        for (b = 0; b < BD; b++) {
+          rb0 = r0 - th + 2 * th * b / BD; rb1 = rb0 + 2 * th / BD; rm = (rb0 + rb1) / 2; tw = rm * dph + 0.3;
+          g.drawImage(strip, j * sx, NT * b / BD, sx, NT / BD, -tw / 2, rb0, tw, rb1 - rb0 + 0.3);
+        }
+        g.restore();
+      }
+    } else { // sem a faixa (não deveria acontecer): a arte inteira, espelhada
+      var cl = f.size * (0.8 + 0.27 * e3), cs = cl / img.width;
+      g.translate(f.x, f.y); g.rotate(f.a); g.translate(cl, 0); g.scale(-cs, cs * Math.min(1.6, (2 * ph) / 1.6)); g.drawImage(img, 0, -img.height / 2);
+    }
+    g.restore();
+  }
+  function hbLight(g, f, w, rt, frac, P, fa, strong) {
+    if (frac <= 0.001) return;
+    var E = P === SKILL_RED ? '#ffd9d2' : '#ffffff';
+    var R = f.size, ph = hbHalf(w, rt, R), a1 = f.a - ph + 2 * ph * frac, d0 = Math.min(Math.max(rt, 1), R * 0.6);
+    var gs = g.createRadialGradient(f.x, f.y, R * 0.12, f.x, f.y, R);
+    gs.addColorStop(0, rgba(P.c, 0)); gs.addColorStop(0.55, rgba(P.c, 0.1 * fa * strong)); gs.addColorStop(1, rgba(P.h, 0.27 * fa * strong));
+    hbPath(g, f, w, rt, frac); g.fillStyle = gs; g.fill();
+    // laterais da forma máxima (a de onde o corte parte sempre, a da frente quando o corte termina)
+    g.lineCap = 'round'; g.strokeStyle = rgba(E, 0.4 * fa); g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(f.x + Math.cos(f.a - hbHalf(w, rt, d0)) * d0, f.y + Math.sin(f.a - hbHalf(w, rt, d0)) * d0); hbEdge(g, f, w, rt, -1, d0, 14); g.stroke();
+    if (frac >= 0.999) { g.beginPath(); g.moveTo(f.x + Math.cos(f.a + hbHalf(w, rt, d0)) * d0, f.y + Math.sin(f.a + hbHalf(w, rt, d0)) * d0); hbEdge(g, f, w, rt, 1, d0, 14); g.stroke(); }
+    // borda externa no alcance máximo (a parte já varrida, mais forte perto da frente do corte)
+    var tail = Math.max(f.a - ph, a1 - 1.1), n = 8, i, ta, tb;
+    for (i = 0; i < n; i++) {
+      ta = tail + (a1 - tail) * i / n; tb = tail + (a1 - tail) * (i + 1) / n;
+      g.strokeStyle = rgba(E, (0.25 + 0.6 * (i + 1) / n) * fa); g.lineWidth = 1.4 + 1.8 * (i + 1) / n;
+      g.beginPath(); g.arc(f.x, f.y, R - 1, ta, tb); g.stroke();
+    }
+    // linha da frente do corte, do corpo até o alcance máximo
+    g.strokeStyle = rgba(E, 0.6 * fa); g.lineWidth = 2;
+    g.beginPath(); g.moveTo(f.x + Math.cos(a1) * R * 0.3, f.y + Math.sin(a1) * R * 0.3); g.lineTo(f.x + Math.cos(a1) * (R - 1), f.y + Math.sin(a1) * (R - 1)); g.stroke();
+  }
+
   function drawFx(g, f, T) {
     var d = dur(f.kind), p = f.age / d;
     if (p >= 1 || p < 0) return;
@@ -121,11 +262,21 @@
         break;
       }
       case 'arc': { // espada e chicote: corte em arco
-        var w = f.extra || 2, a0 = f.a - w / 2, sw = Math.min(1, p * 2.4), a1 = a0 + w * sw;
-        var whip = fam === 'chicote', aimg = fxImg('fx_golpe_corte');
-        if (aimg) { // arte de IA: meia-lua com a parte curva voltada para o golpe
-          var aw = f.size * (whip ? 2.9 : 2.5) * (0.75 + 0.25 * e3);
-          spr(g, aimg, f.x + Math.cos(f.a) * (f.size * 0.95 - aw / 2), f.y + Math.sin(f.a) * (f.size * 0.95 - aw / 2), aw, f.a + Math.PI, Math.min(1, p * 9) * Math.min(1, a * 1.6), true);
+        var ex = f.extra, w = Array.isArray(ex) ? ex[0] : (ex || 2), rt = Array.isArray(ex) ? ex[1] : 0, ph = hbHalf(w, rt, f.size), a0 = f.a - ph, whip = fam === 'chicote', aimg = fxImg('fx_golpe_corte');
+        // a luz do corte aparece onde a arma já passou: acompanha a lâmina (ou o chicote) de uma ponta à outra da área de dano
+        var sw = (fam === 'espada' || whip) ? slashFrac(fam, f.age, 0, 2 * ph) : Math.min(1, p * 2.4), a1 = a0 + 2 * ph * sw;
+        var bimg = (fam === 'espada' || whip) ? fxImg('fx_corte') : null;
+        if (bimg) { // a mesma animação da habilidade (arte desenrolada ao longo do leque do dano), em branco e azul
+          P = SLASH_BLUE; g.globalCompositeOperation = 'source-over'; // sem somar luz sobre o verde do chão, para o azul continuar azul
+          cutWarp(g, f, w, rt, sw, P, bimg, 'fx_corte_azul', e3, p, a);
+          break;
+        }
+        if (aimg) { // arte de IA: meia-lua com a parte curva voltada para o golpe, encaixada no leque do dano (borda no alcance máximo e nas duas bordas do cone)
+          var aw = f.size * (whip ? 3.2 : 2.8) * (0.8 + 0.2 * e3), fa = Math.min(1, p * 9) * Math.min(1, a * 1.6);
+          hbLight(g, f, w, rt, sw, P, fa, 1);
+          g.save(); hbPath(g, f, w, rt, sw); g.clip();
+          spr(g, aimg, f.x + Math.cos(f.a) * (f.size * 1.02 - aw / 2), f.y + Math.sin(f.a) * (f.size * 1.02 - aw / 2), aw, f.a + Math.PI, fa, true);
+          g.restore();
           break;
         }
         var rOut = f.size, rIn = f.size * (whip ? 0.86 : 0.62);
@@ -191,15 +342,14 @@
         break;
       }
       case 's_cone': { // espada e chicote: onda cortante em leque
-        var w2 = f.extra || 2.3, sw2 = Math.min(1, p * 2.2);
+        P = SKILL_RED; g.globalCompositeOperation = 'source-over'; // habilidade: vermelha de verdade (somar luz sobre o verde do chão deixaria laranja)
+        var ex2 = f.extra, w2 = Array.isArray(ex2) ? ex2[0] : (ex2 || 2.3), rt2 = Array.isArray(ex2) ? ex2[1] : 0, ph2 = hbHalf(w2, rt2, f.size);
+        var sw2 = (fam === 'espada' || fam === 'chicote') ? slashFrac(fam, f.age, 1, 2 * ph2) : Math.min(1, p * 2.2);
         var gr2 = g.createRadialGradient(f.x, f.y, 6, f.x, f.y, f.size);
         gr2.addColorStop(0, rgba(P.c, 0)); gr2.addColorStop(0.6, rgba(P.c, a * 0.5)); gr2.addColorStop(1, rgba(P.h, a * 0.9));
-        var cimg = fxImg('fx_corte');
-        if (cimg) { // arte de IA: a ponta fica em quem golpeou e o arco abre na direção do golpe; o leque de dano continua marcado, mais fraco
-          g.save(); g.globalAlpha = 0.28; g.fillStyle = gr2; g.beginPath(); g.moveTo(f.x, f.y); g.arc(f.x, f.y, f.size, f.a - w2 / 2, f.a - w2 / 2 + w2 * sw2); g.closePath(); g.fill(); g.restore();
-          var cl = f.size * (0.55 + 0.5 * e3), cs = cl / cimg.width * 1.15, cal = Math.min(1, p * 10) * Math.min(1, a * 1.5);
-          g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.max(0, Math.min(1, cal)); g.translate(f.x, f.y); g.rotate(f.a); g.scale(cs, cs * Math.min(1.6, w2 / 1.6));
-          g.drawImage(cimg, 0, -cimg.height / 2); g.restore();
+        var cimg = fxImg('fx_corte'); if (cimg) cimg = tintRed(cimg, 'fx_corte');
+        if (cimg) { // arte de IA (a mesma do golpe normal, pintada de vermelho), encaixada no leque do dano
+          cutWarp(g, f, w2, rt2, sw2, P, cimg, 'fx_corte', e3, p, a);
           break;
         }
         g.fillStyle = gr2; g.beginPath(); g.moveTo(f.x, f.y); g.arc(f.x, f.y, f.size, f.a - w2 / 2, f.a - w2 / 2 + w2 * sw2); g.closePath(); g.fill();
@@ -550,8 +700,8 @@
 
   /* ---------- projéteis ---------- */
   // Flecha colorida: haste e penas na cor do arco, ponta clara com contorno escuro e rastro sempre aceso (dá para seguir cada flecha na tela)
-  function arrow(g, x, y, ang, P, tier, T, trail) {
-    g.save(); g.translate(x, y); g.rotate(ang);
+  function arrow(g, x, y, ang, P, tier, T, trail, sc) {
+    g.save(); g.translate(x, y); g.rotate(ang); if (sc) g.scale(sc, sc);
     g.globalCompositeOperation = 'lighter';
     var tg = g.createLinearGradient(-70, 0, 0, 0); tg.addColorStop(0, rgba(P.c, 0)); tg.addColorStop(1, rgba(P.c, 0.85));
     g.strokeStyle = tg; g.lineWidth = 7; g.lineCap = 'round'; g.beginPath(); g.moveTo(-70, 0); g.lineTo(-6, 0); g.stroke();
@@ -566,12 +716,13 @@
     g.fillStyle = P.h; g.beginPath(); g.moveTo(-18, 0); g.lineTo(-25, -5.5); g.lineTo(-13, -1); g.closePath(); g.fill(); g.beginPath(); g.moveTo(-18, 0); g.lineTo(-25, 5.5); g.lineTo(-13, 1); g.closePath(); g.fill();
     g.restore();
   }
+  var ARROW_BASIC = 0.6; // tamanho da flecha do ataque normal do arco (1 = como era antes)
   function drawProj(g, e, T) {
     var tier = e.tier || 1, P = pal(FAM[e.fam] ? e.fam : 'varinha', tier), x = e.rx, y = e.ry, R = e.r || 10, ang = e.a || 0, i;
     if (e.k === 'p' && e.fam === 'arco') {
       var aimg = fxImg('fx_proj_flecha');
-      if (aimg) { var aw = 150 + tier * 8; spr(g, aimg, x, y, aw, ang, 1, true, 0.86, 0.5); return; }
-      arrow(g, x, y, ang, P, tier, T, tier >= 2); return;
+      if (aimg) { var aw = (150 + tier * 8) * ARROW_BASIC; spr(g, aimg, x, y, aw, ang, 1, true, 0.86, 0.5); return; } // ataque normal: flecha menor
+      arrow(g, x, y, ang, P, tier, T, tier >= 2, ARROW_BASIC); return;
     }
     if (e.k === 'v') { arrow(g, x, y, ang, P, tier, T, true); return; }
     g.save(); g.translate(x, y); g.globalCompositeOperation = 'lighter';
@@ -609,6 +760,82 @@
   // Parada, a arma fica apontada para onde o slime olha; no golpe a mão faz o movimento da família e a arma vai junto.
   var STYLE = { faca: 'stab', rapieira: 'stab', espada: 'slash', chicote: 'slash', martelo: 'smash', maca: 'smash', arco: 'shoot', varinha: 'shoot', cajado: 'shoot', sinos: 'ring' };
   function ease(u) { return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2; }
+  /* ---- espada e chicote: linha do tempo do golpe cortante ---- */
+  // 0 → wE: puxa a arma para trás (antecipação) · wE → sE: corte rápido, que passa um pouco do alvo · depois acompanha o golpe e volta ao repouso.
+  // da = ângulo da mão em relação à direção do golpe, df = quanto o braço estica, wr = giro do pulso. Bate com a pose do corpo (attackPose, em game.js).
+  var SL = {
+    espada:  { span: 1.9, wind: 0.5, over: 0.1, wE: 0.12, sE: 0.34, wr0: 0.5, wr1: -0.4 },
+    chicote: { span: 2.6, wind: 0.75, over: 0.14, wE: 0.14, sE: 0.4, wr0: 0.2, wr1: -0.2 }
+  };
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function lerpAng(a, b, t) { var d = b - a; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU; return a + d * t; }
+  function eo3(x) { x = Math.max(0, Math.min(1, x)); return 1 - Math.pow(1 - x, 3); }
+  function eio(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
+  // span = abertura da área de dano (rad). O corte sai de -span/2 e vai até +span/2: a ponta percorre a área de dano de ponta a ponta.
+  function slashPose(uq, fam, span) {
+    var c = SL[fam] || SL.espada, sp = span || c.span, s0 = -sp / 2, s1 = sp / 2, back = s0 - c.wind, p, q, o = {};
+    if (uq < c.wE) { p = eo3(uq / c.wE); o.da = lerp(s0, back, p); o.df = lerp(1, 0.78, p); o.wr = lerp(0, c.wr0, p); }
+    else if (uq < c.sE) { p = (uq - c.wE) / (c.sE - c.wE); q = 0.65 * eo3(p) + 0.35 * eio(p); o.da = lerp(back, s1 + c.over, q); o.df = lerp(0.78, 1.18, q); o.wr = lerp(c.wr0, c.wr1, q); }
+    else { p = eo3((uq - c.sE) / 0.26); o.da = lerp(s1 + c.over, s1, p); o.df = lerp(1.18, 1.04, p); o.wr = lerp(c.wr1, 0, p); }
+    return o;
+  }
+  // 0..1: quanto da área de dano o corte já varreu neste instante (a luz no chão aparece junto com a passada da arma)
+  function slashFrac(fam, age, skill, span) { var ps = slashPose(Math.max(0, age) / swingDur(fam, skill), fam, span); return Math.max(0, Math.min(1, (ps.da + span / 2) / span)); }
+  // 0..1: quanto o golpe manda na pose da mão (no começo e no fim ela se mistura com a posição de repouso, sem pulo)
+  function slashBlend(u) { return eio(u / 0.1) * (1 - eio((u - 0.72) / 0.28)); }
+  // 0..1: força do golpe (a faixa de luz e a ondulação do chicote só aparecem durante o corte)
+  function strikeI(uq, fam) { var c = SL[fam] || SL.espada; return Math.pow(Math.sin(Math.PI * Math.max(0, Math.min(1, (uq - c.wE * 0.85) / (c.sE - c.wE + 0.14)))), 1.2); }
+
+  /* ---- chicote de verdade: o cabo vai na mão e a tira se solta, estica e estala ---- */
+  // No desenho do chicote (229x256) só o cabo é aproveitado durante o golpe: pommel = ponta de baixo, top = onde a tira sai.
+  var WH = { w: 229, h: 256, pommel: [203, 230], top: [134, 79], half: 21 };
+  function whipLash(g, ax, ay, u, A0, rtip, L, P, tier, T, alpha, span) {
+    var c = SL.chicote, N = 18, pts = [], i, s, uq, ps, a, e, ext, rip, act = strikeI(u, 'chicote'), crack = c.sE + 0.1;
+    ext = u < c.wE ? lerp(0.35, 0.5, eio(u / c.wE)) : u < crack ? lerp(0.5, 1, eo3((u - c.wE) / (crack - c.wE))) : lerp(1, 0.25, eio((u - crack) / 0.3));
+    for (i = 0; i <= N; i++) {
+      s = i / N; uq = Math.max(0, u - s * 0.2); ps = slashPose(uq, 'chicote', span);
+      a = lerpAng(rtip, A0 + ps.da + ps.wr, slashBlend(uq)); e = L * ext * s;
+      rip = Math.sin(s * 9 - u * 46) * 5 * s * (1 - s) * (0.25 + 0.75 * act);
+      pts.push([ax + Math.cos(a) * e - Math.sin(a) * rip, ay + Math.sin(a) * e + Math.cos(a) * rip]);
+    }
+    // rastro de luz da ponta durante o estalo
+    if (act > 0.08) {
+      var pv = null, k, uk, pk, ak, ek, xx, yy;
+      g.save(); g.globalCompositeOperation = 'lighter'; g.lineCap = 'round'; g.globalAlpha = alpha;
+      for (k = 0; k < 18; k++) {
+        uk = u - k * 0.01; if (uk < 0) break;
+        pk = slashPose(uk, 'chicote', span); ak = lerpAng(rtip, A0 + pk.da + pk.wr, slashBlend(uk));
+        ek = uk < c.wE ? lerp(0.35, 0.5, eio(uk / c.wE)) : uk < crack ? lerp(0.5, 1, eo3((uk - c.wE) / (crack - c.wE))) : lerp(1, 0.25, eio((uk - crack) / 0.3));
+        xx = ax + Math.cos(ak) * L * ek; yy = ay + Math.sin(ak) * L * ek;
+        if (pv) { g.strokeStyle = rgba('#ffffff', 0.55 * act * (1 - k / 18)); g.lineWidth = 3.2 * (1 - k / 18) + 0.5; g.beginPath(); g.moveTo(pv[0], pv[1]); g.lineTo(xx, yy); g.stroke(); }
+        pv = [xx, yy];
+      }
+      g.restore();
+    }
+    var leather = P === SKILL_RED ? '#8f1d16' : P === SLASH_BLUE ? '#1f4f94' : tier >= 6 ? '#5a2430' : tier >= 5 ? '#c9983c' : tier >= 3 ? '#7a4a2a' : '#6b4a2e', i0;
+    g.save(); g.lineCap = 'round'; g.lineJoin = 'round'; g.globalAlpha = alpha;
+    var pass = function (col, w0, w1, dash, add) {
+      g.globalCompositeOperation = add ? 'lighter' : 'source-over'; g.strokeStyle = col; g.setLineDash(dash || []);
+      for (i0 = 1; i0 <= N; i0++) { g.lineWidth = lerp(w0, w1, i0 / N); g.beginPath(); g.moveTo(pts[i0 - 1][0], pts[i0 - 1][1]); g.lineTo(pts[i0][0], pts[i0][1]); g.stroke(); }
+    };
+    pass('rgba(26,15,8,.92)', 9.5, 3.2);
+    pass(leather, 6.4, 2);
+    pass('rgba(30,17,9,.55)', 5.8, 1.7, [2.4, 3.6]);   // trançado
+    pass('rgba(255,226,170,.55)', 1.8, 0.6);
+    if (act > 0.05) pass(rgba(P.c, 0.55 * act), 4.4, 1.2, null, true);
+    g.setLineDash([]);
+    var tp = pts[N]; g.globalCompositeOperation = 'source-over'; g.fillStyle = '#1c110a'; g.beginPath(); g.arc(tp[0], tp[1], 2.4, 0, TAU); g.fill();
+    // estalo: clarão na ponta, anel que abre e faíscas
+    var cp = (u - (crack - 0.03)) / 0.18;
+    if (cp > 0 && cp < 1) {
+      var f = 1 - cp; g.globalCompositeOperation = 'lighter'; g.globalAlpha = 1;
+      glow(g, tp[0], tp[1], 12 + 28 * f, '#ffffff', 0.85 * f); glow(g, tp[0], tp[1], 24 + 30 * f, P.c, 0.45 * f);
+      g.strokeStyle = rgba('#ffffff', 0.8 * f); g.lineWidth = 2.4 * f + 0.6; g.beginPath(); g.arc(tp[0], tp[1], 6 + 36 * eo3(cp), 0, TAU); g.stroke();
+      spikes(g, tp[0], tp[1], 2, 8 + 26 * f, 8, T * 3, 0.14, rgba('#ffffff', 0.85 * f));
+    }
+    g.restore();
+  }
+
   // (x, y) = centro do corpo; sh = ombro desta mão; sw = { age, dur, a (ângulo do golpe), skill }; arm = { before(hx, hy), after(hx, hy) } desenha braço e mão.
   function drawHeld(g, wc, fam, tier, x, y, r, sz, face, idx, nWeap, sw, T, geo, sh, arm) {
     geo = geo || { gx: 0.5, gy: 0.5, tip: -Math.PI / 4, len: 0.5 };
@@ -619,8 +846,10 @@
     // parada, a arma fica erguida ao lado do corpo, inclinada para onde o slime olha (o arco e a varinha apontam mais para a frente)
     var up = -Math.PI / 2 + (left ? -0.5 : 0.5), wUp = (st === 'shoot' && fam !== 'cajado') ? 0.3 : 0.8, wFace = 0.55;
     var tip = st === 'ring' ? -Math.PI / 2 + Math.sin(T * 3 + idx) * 0.07 : Math.atan2(Math.sin(face) * wFace + Math.sin(up) * wUp, Math.cos(face) * wFace + Math.cos(up) * wUp), scale = 1, gl = 0, trail = null;
-    var u = sw ? sw.age / sw.dur : 1, swinging = sw && u < 1;
+    var u = sw ? sw.age / sw.dur : 1, swinging = sw && u < 1, bl = 0, whipSwing = false, post = null;
     if (swinging) {
+      var FF = FAM[fam] || {}, hbR = sw.reach || (sw.skill ? (FF.skill ? FF.skill.range : 100) : (FF.range || 74) + r * 0.5), // área de dano do golpe (alcance e abertura)
+        hbS = Math.min(5.2, sw.span || (sw.skill ? (FF.skill ? FF.skill.angle : 2.3) : (FF.arcAng || 1.9))), hcx = x, hcy = y + r * 0.62;
       var A0 = sw.a, k = sw.skill ? 1.35 : 1, cx = sh[0], cy = sh[1], reach = r * 0.55 + sz * 0.5, hr = r * 0.5 + sz * 0.12, gi, uu; // a mão gira em volta do próprio ombro (o braço não cruza o corpo)
       scale = 1 + (k - 1) * 0.6; gl = (1 - u) * (sw.skill ? 1 : 0.5);
       // onde a mão está no instante u de cada estilo (também usada para as imagens residuais)
@@ -628,8 +857,8 @@
         var o = { x: 0, y: 0, a: 0 }, sa, dist;
         uq = Math.max(0, Math.min(1, uq));
         if (st === 'slash') {
-          var span = fam === 'chicote' ? 2.6 : 1.9; sa = A0 - span / 2 + span * ease(uq);
-          o.x = cx + Math.cos(sa) * hr * 1.2; o.y = cy + Math.sin(sa) * hr * 1.2; o.a = sa;
+          var ps = slashPose(uq, fam, hbS); sa = A0 + ps.da;
+          o.x = cx + Math.cos(sa) * hr * 1.2 * ps.df; o.y = cy + Math.sin(sa) * hr * 1.2 * ps.df; o.a = sa + ps.wr;
         } else if (st === 'stab') {
           var lunge = Math.sin(Math.min(1, uq * 1.15) * Math.PI) * sz * 0.42;
           o.x = cx + Math.cos(A0) * (hr * 0.9 + lunge); o.y = cy + Math.sin(A0) * (hr * 0.9 + lunge); o.a = A0;
@@ -642,11 +871,48 @@
         return o;
       };
       if (st === 'slash') {
-        var P = pal(fam, tier), span0 = fam === 'chicote' ? 2.6 : 1.9, o1 = at(u);
-        hx = o1.x; hy = o1.y; tip = o1.a;
-        g.save(); g.globalCompositeOperation = 'lighter';
-        crescent(g, x, y, reach * 1.1 + sz * 0.7, reach * 1.1 - sz * 0.1, A0 - span0 / 2, o1.a, rgba(P.c, (1 - u) * 0.55)); g.restore();
-        trail = []; for (gi = 1; gi <= 3; gi++) { uu = u - gi * 0.07; if (uu > 0) { var og = at(uu); trail.push([og.x, og.y, og.a, 0.34 / gi]); } }
+        var P = sw.skill ? SKILL_RED : SLASH_BLUE, cfg = SL[fam] || SL.espada, rhx = hx, rhy = hy, rtip = tip;
+        scale *= 1 + 0.1 * Math.sin(Math.PI * Math.max(0, Math.min(1, (u - cfg.wE) / (cfg.sE - cfg.wE + 0.2)))); // a arma cresce um pouco no corte
+        // habilidade: a lâmina cresce no corte (energia) até a mão não precisar esticar o braço para alcançar a borda da área de dano
+        if (sw.skill && fam !== 'chicote') scale *= 1 + Math.min(0.6, Math.max(0, (hbR - 20) / (geo.len * sz * scale) - 1)) * strikeI(u, fam);
+        bl = geo.len * sz * scale;
+        // pose da mão e da arma em cada instante: gira em volta do ombro e, durante o corte, a ponta é levada até a borda da área de dano (mesmo alcance e mesmo ângulo)
+        var pose = function (uq) {
+          var o = at(uq), kq = slashBlend(uq), px = lerp(rhx, o.x, kq), py = lerp(rhy, o.y, kq), pa = lerpAng(rtip, o.a, kq);
+          if (fam === 'chicote') return { x: px, y: py, a: pa };
+          var fk = eio((uq - cfg.wE * 0.5) / (cfg.sE - cfg.wE * 0.5)) * (1 - eio((uq - cfg.sE - 0.04) / 0.3)), al = A0 + slashPose(uq, fam, hbS).da, hd = Math.max(r * 0.3, hbR - bl);
+          return { x: lerp(px, hcx + Math.cos(al) * hd, fk), y: lerp(py, hcy + Math.sin(al) * hd, fk), a: lerpAng(pa, al, fk) };
+        };
+        var o1 = pose(u); hx = o1.x; hy = o1.y; tip = o1.a;
+        if (fam === 'chicote' && geo.img) {
+          whipSwing = true; // o chicote tem o jeito dele: cabo na mão e tira que se solta (desenhado depois do cabo)
+        } else {
+          // espada: faixa de luz que acompanha a lâmina durante o corte
+          g.save(); g.globalCompositeOperation = 'lighter';
+          var prv = null;
+          for (gi = 0; gi < 10; gi++) {
+            uu = u - gi * 0.022; if (uu < 0) break;
+            var oq = pose(uu), qx = oq.x, qy = oq.y, qa = oq.a, qdx = Math.cos(qa), qdy = Math.sin(qa);
+            var cur = { tx: qx + qdx * bl * 1.02, ty: qy + qdy * bl * 1.02, mx: qx + qdx * bl * 0.3, my: qy + qdy * bl * 0.3, i: strikeI(uu, fam) * Math.pow(1 - gi / 10, 1.1) };
+            if (prv) {
+              var al = (prv.i + cur.i) / 2;
+              if (al > 0.02) {
+                g.beginPath(); g.moveTo(prv.tx, prv.ty); g.lineTo(cur.tx, cur.ty); g.lineTo(cur.mx, cur.my); g.lineTo(prv.mx, prv.my); g.closePath(); g.fillStyle = rgba(P.c, al * 0.55); g.fill();
+                g.strokeStyle = rgba('#ffffff', al * 0.9); g.lineWidth = 2.8 * al + 0.6; g.lineCap = 'round'; g.beginPath(); g.moveTo(prv.tx, prv.ty); g.lineTo(cur.tx, cur.ty); g.stroke();
+              }
+            }
+            prv = cur;
+          }
+          g.restore();
+          var ff = Math.max(0, 1 - Math.abs(u - (cfg.sE + 0.02)) / 0.1); // brilho na ponta no instante do corte
+          if (ff > 0.02) post = function () {
+            var tx = hx + Math.cos(tip) * bl, ty = hy + Math.sin(tip) * bl;
+            g.save(); g.globalCompositeOperation = 'lighter';
+            glow(g, tx, ty, 14 + 22 * ff, '#ffffff', 0.75 * ff); glow(g, tx, ty, 26 + 30 * ff, P.c, 0.4 * ff);
+            spikes(g, tx, ty, 2, 10 + 24 * ff, 4, tip + Math.PI / 4, 0.16, rgba('#ffffff', 0.9 * ff));
+            g.restore();
+          };
+        }
       } else if (st === 'stab') {
         var o2 = at(u); hx = o2.x; hy = o2.y; tip = o2.a;
         trail = []; for (gi = 1; gi <= 3; gi++) { uu = u - gi * 0.06; if (uu > 0) { var og2 = at(uu); trail.push([og2.x, og2.y, og2.a, 0.3 / gi]); } }
@@ -665,19 +931,33 @@
     var maxL = r * 3.1, ddx = hx - sh[0], ddy = hy - sh[1], dd = Math.hypot(ddx, ddy);
     if (dd > maxL) { hx = sh[0] + ddx * maxL / dd; hy = sh[1] + ddy * maxL / dd; }
     var tdx = Math.cos(tip), tdy = Math.sin(tip), tl2 = geo.len * sz * scale;
-    if (gl > 0.02) { var Pg = pal(fam, tier); g.save(); g.globalCompositeOperation = 'lighter'; glow(g, hx + tdx * tl2 * 0.5, hy + tdy * tl2 * 0.5, sz * (0.7 + gl * 0.6), Pg.c, 0.45 * gl); g.restore(); }
+    if (gl > 0.02) { var Pg = (swinging && st === 'slash') ? (sw.skill ? SKILL_RED : SLASH_BLUE) : pal(fam, tier); g.save(); g.globalCompositeOperation = 'lighter'; glow(g, hx + tdx * tl2 * 0.5, hy + tdy * tl2 * 0.5, sz * (0.7 + gl * 0.6), Pg.c, 0.45 * gl); g.restore(); }
     var paint = function (px, py, ang, a, sc) {
       g.save(); if (a < 1) g.globalAlpha = a; g.translate(px, py); g.rotate(ang - geo.tip); g.scale(sc, sc);
       g.drawImage(wc, -geo.gx * dw, -geo.gy * dh, dw, dh); g.restore();
     };
     if (arm && arm.before) arm.before(hx, hy);
     if (trail) trail.forEach(function (q) { paint(q[0], q[1], q[2], q[3], scale); });
-    paint(hx, hy, tip, 1, scale);
+    if (whipSwing) {
+      // chicote: o desenho enrolado some quando a tira se solta e volta no fim; o cabo fica sempre na mão
+      var coil = Math.max(0, Math.min(1, 1 - eio(u / 0.1) + eio((u - 0.84) / 0.16)));
+      if (coil > 0.01) paint(hx, hy, tip, coil, scale);
+      var rot = tip - geo.tip, cr = Math.cos(rot), sr = Math.sin(rot), mp = function (X, Y) { return [(X / WH.w - geo.gx) * dw, (Y / WH.h - geo.gy) * dh]; };
+      var p0 = WH.pommel, p1 = WH.top, vx = p1[0] - p0[0], vy = p1[1] - p0[1], vl = Math.hypot(vx, vy), ux = vx / vl, uy = vy / vl, nx = -uy * WH.half, ny = ux * WH.half;
+      var e0 = [p0[0] - ux * 12, p0[1] - uy * 12], e1 = [p1[0] + ux * 8, p1[1] + uy * 8];
+      var q = [mp(e0[0] + nx, e0[1] + ny), mp(e0[0] - nx, e0[1] - ny), mp(e1[0] - nx, e1[1] - ny), mp(e1[0] + nx, e1[1] + ny)];
+      g.save(); g.translate(hx, hy); g.rotate(rot); g.scale(scale, scale);
+      g.beginPath(); g.moveTo(q[0][0], q[0][1]); g.lineTo(q[1][0], q[1][1]); g.lineTo(q[2][0], q[2][1]); g.lineTo(q[3][0], q[3][1]); g.closePath(); g.clip();
+      g.drawImage(wc, -geo.gx * dw, -geo.gy * dh, dw, dh); g.restore();
+      var at0 = mp(p1[0], p1[1]), axw = hx + (at0[0] * cr - at0[1] * sr) * scale, ayw = hy + (at0[0] * sr + at0[1] * cr) * scale;
+      whipLash(g, axw, ayw, u, A0, tip, Math.max(40, hbR - ((axw - hcx) * Math.cos(A0) + (ayw - hcy) * Math.sin(A0))), sw.skill ? SKILL_RED : SLASH_BLUE, tier, T, Math.max(0, Math.min(1, eio(u / 0.08) * (1 - eio((u - 0.86) / 0.14)))), hbS);
+    } else paint(hx, hy, tip, 1, scale);
+    if (post) post();
     // brilho permanente das armas altas
     if (tier >= 5 && !swinging) { g.save(); g.globalCompositeOperation = 'lighter'; glow(g, hx + tdx * tl2 * 0.5, hy + tdy * tl2 * 0.5, sz * 0.6, pal(fam, tier).c, tier >= 6 ? 0.28 + 0.1 * Math.sin(T * 6 + idx) : 0.2); g.restore(); }
     if (arm && arm.after) arm.after(hx, hy);
   }
-  function swingDur(fam, skill) { var st = STYLE[fam] || 'stab'; return skill ? 0.52 : (st === 'smash' ? 0.46 : st === 'slash' ? 0.3 : 0.26); }
+  function swingDur(fam, skill) { var st = STYLE[fam] || 'stab'; return skill ? 0.52 : (st === 'smash' ? 0.46 : st === 'slash' ? (fam === 'chicote' ? 0.38 : 0.32) : 0.26); }
 
   /* ---------- faíscas de acerto ---------- */
   // ang = direção do golpe (de quem bate para quem apanha); color = cor de quem apanhou (gotinhas de gelatina ou lascas do monstro)

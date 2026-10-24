@@ -1570,6 +1570,7 @@
       var vx = (d.P[0] - d.H[0]) * w1, vy = (d.P[1] - d.H[1]) * h1;
       out = { gx: d.H[0] + (d.P[0] - d.H[0]) * d.t, gy: d.H[1] + (d.P[1] - d.H[1]) * d.t, tip: Math.atan2(vy / h1 * cv.height, vx / w1 * cv.width), len: (1 - d.t) * Math.hypot(vx, vy) };
     }
+    out.img = isImg;
     return (geoCache[key] = out);
   }
   var iconCache = {};
