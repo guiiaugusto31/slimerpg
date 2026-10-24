@@ -203,6 +203,14 @@ const QUESTS = [
 
 // Missão do Arco: "monstro forte" (faixa 3 ou mais) que morre com no máximo este número de golpes. Com o teto de dano por golpe, matar de um só deixou de ser possível.
 const ONEHIT_MAX_HITS = 3;
+// Modos de jogo: cada um tem suas próprias salas.
+// classic = o jogo de sempre. coop = ninguém fere ninguém, o dragão é a meta e o cronômetro corre da 1ª pancada até ele cair.
+// pvp = todos podem lutar entre si, os monstros dão mais XP e a sala conta abates, mortes e série.
+const MODES = {
+  classic: { name: 'Clássico', desc: 'O jogo de sempre: monstros, PvP liberado e o dragão no centro.', mobXp: 1 },
+  coop: { name: 'Cooperativo', desc: 'Todos do mesmo lado: sem PvP, mais XP dos monstros e um cronômetro para derrubar o dragão no menor tempo.', mobXp: 1.5 },
+  pvp: { name: 'PvP', desc: 'Todos contra todos: os monstros dão 3x mais XP para subir rápido, e a sala conta seus abates, mortes e série.', mobXp: 3 }
+};
 const MOB_COUNT = 238; // com as aranhas e árvores mais raras: os outros monstros continuam na mesma quantidade de antes
 const MOB_RESPAWN = [8, 14];
 const DROP_WEAPON = 0.14;
@@ -346,12 +354,12 @@ function publicData() {
   return {
     MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS,
     ATTR_NAMES, FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, RES_PER_TIER, RES_CAP, QUESTS, POINTS_PER_LEVEL, ATTR_MAX,
-    ITEM_LIMIT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, SKIN_SLOTS, SKINS, SKIN_PACKS
+    ITEM_LIMIT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, SKIN_SLOTS, SKINS, SKIN_PACKS, MODES
   };
 }
 
 module.exports = {
-  MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS, WAND_SPLIT, TRAIL_HEAL, ATTRS, ATTR_NAMES, POINTS_PER_LEVEL, LEVEL_DIE, ATTR_MAX,
+  MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS, WAND_SPLIT, TRAIL_HEAL, ATTRS, ATTR_NAMES, POINTS_PER_LEVEL, LEVEL_DIE, MODES, ATTR_MAX,
   FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, QUESTS, MOB_COUNT, MOB_RESPAWN, DROP_WEAPON, DROP_ARMOR,
   DROP_MAX_TIER, DROP_MAX_TIER_ARMOR, ITEM_LIMIT, PLAYER_REGEN, PLAYER_STUN_MULT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, TUNE, ONEHIT_MAX_HITS, MIN_HITS, REF_ATTR, mobHpOfTier, hitCap, howToGet, mixName, mixCd, MIX_DMG, xpNeed, attrOf, weaponDamage, skillDamage, armorStats, meetsReq, moveSpeed, MOVE_BASE, publicData,
   SKIN_SLOTS, SKINS, SKIN_PACKS, skinEmpty, skinClean, skinCode, skinDecode

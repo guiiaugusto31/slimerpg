@@ -7,7 +7,7 @@
     "start": "node server.js",
     "imagens": "node tools/baixar-imagens.js",
     "preview": "node tools/gerar-preview.js",
-    "test": "node test/sim.js && node test/contas.js && node test/ranking.js && node test/skins.js && node test/tiro.js && node test/especiais.js && node test/misturas.js && node test/movimento.js"
+    "test": "node test/sim.js && node test/contas.js && node test/ranking.js && node test/skins.js && node test/tiro.js && node test/especiais.js && node test/misturas.js && node test/movimento.js && node test/modos.js"
   },
   "engines": {
     "node": ">=18"

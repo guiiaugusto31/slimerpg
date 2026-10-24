@@ -103,6 +103,15 @@
     }
     requestAnimationFrame(previewLoop);
   }
+  var MODE_KEYS = ['classic', 'coop', 'pvp'];
+  function setMode(k) {
+    if (MODE_KEYS.indexOf(k) < 0) k = 'classic';
+    cfg.mode = k; store.set('slimeio_mode', k);
+    Array.prototype.forEach.call(document.querySelectorAll('#modes button'), function (b) { b.setAttribute('aria-checked', b.dataset.mode === k ? 'true' : 'false'); });
+    var md = GD.MODES && GD.MODES[k]; $('modeDesc').textContent = md ? md.desc : '';
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#modes button'), function (b) { b.addEventListener('click', function () { setMode(b.dataset.mode); }); });
+  setMode(store.get('slimeio_mode', 'classic'));
   function play() {
     var name = $('nameIn').value.trim() || 'Slime';
     cfg.name = name; store.set('slimeio_name', name); store.set('slimeio_color', cfg.color);
@@ -117,7 +126,7 @@
     var proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(proto + '://' + location.host);
     ws.onopen = function () {
-      var j = { t: 'join', name: cfg.name, color: cfg.color, save: store.get('slimeio_save', null) };
+      var j = { t: 'join', name: cfg.name, color: cfg.color, mode: cfg.mode, save: store.get('slimeio_save', null) };
       if (hasAccount()) j.token = Conta.token(); // com conta, o servidor carrega o progresso dela
       ws.send(JSON.stringify(j));
     };
@@ -144,7 +153,8 @@
   function onMsg(m) {
     switch (m.t) {
       case 'init':
-        S.id = m.id; S.joined = true;
+        S.id = m.id; S.joined = true; S.mode = m.mode || 'classic'; S.best = m.best || [];
+        updateModeChip();
         m.roster.forEach(function (r) { S.roster[r.id] = r; });
         $('title').hidden = true; $('hud').hidden = false;
         $('hName').textContent = cfg.name;
@@ -170,7 +180,8 @@
       case 'pl': delete S.roster[m.id]; break;
       case 's': onSnap(m); break;
       case 'me': onMe(m); break;
-      case 'lb': S.lb = m.l; renderLb(); break;
+      case 'lb': S.lb = m.l; if (m.md) S.mode = m.md; renderLb(); break;
+      case 'best': S.best = m.best || []; updateModeChip(); break;
       case 'feed': addFeed(m.m); if (/despertou o/.test(m.m)) SND.stinger(); break;
       case 'toast': toast(escapeHtml(m.m)); break;
       case 'loot':
@@ -447,12 +458,26 @@
   }
   var CROWN = '<svg viewBox="0 0 15 12" aria-label="coroa"><path d="M1 10 L0 2 L4 6 L7.5 0 L11 6 L15 2 L14 10 Z" fill="#ffb347" stroke="#7a4a10" stroke-width=".8"/></svg>';
   function renderLb() {
-    var h = '<h3>Ranking da sala</h3><ol>';
+    var pvp = S.mode === 'pvp', md = GD.MODES && GD.MODES[S.mode];
+    var h = '<h3>Ranking da sala' + (md && S.mode !== 'classic' ? ' <small>· ' + md.name + '</small>' : '') + '</h3><ol>';
     S.lb.forEach(function (r) {
-      h += '<li class="' + (r[0] === S.id ? 'me' : '') + '">' + (r[3] ? CROWN : '') + '<span class="n">' + escapeHtml(r[1]) + '</span><span class="l">Nv ' + r[2] + '</span></li>';
+      h += '<li class="' + (r[0] === S.id ? 'me' : '') + '">' + (r[3] ? CROWN : '') + '<span class="n">' + escapeHtml(r[1]) + '</span><span class="l">' + (pvp ? (r[4] || 0) + ' ab · Nv ' + r[2] : 'Nv ' + r[2]) + '</span></li>';
     });
     $('lb').innerHTML = h + '</ol>';
   }
+  // Faixa do modo no rodapé: PvP mostra abates, mortes e série; cooperativo mostra o cronômetro do dragão e o recorde da sala.
+  function updateModeChip() {
+    var c = $('modeChip'), me = S.me || {}, md = GD.MODES && GD.MODES[S.mode], B = S.boss, h = '';
+    if (!S.joined || !md || S.mode === 'classic') { c.hidden = true; return; }
+    if (S.mode === 'pvp') h = '<b>PvP</b> · Abates ' + (me.rk || 0) + ' · Mortes ' + (me.rd || 0) + (me.rs >= 2 ? ' · Série ' + me.rs : '');
+    else {
+      var t = B && B[4] === 1 && B[6] ? 'Dragão: <b>' + fmtTime(B[6]) + '</b>' : B && B[4] === 3 ? 'Dragão caído' : 'Dragão dormindo';
+      var best = S.best && S.best[0] ? ' · Recorde ' + fmtTime(S.best[0].t) : '';
+      h = '<b>Coop</b> · ' + t + best;
+    }
+    c.innerHTML = h; c.hidden = false;
+  }
+  setInterval(function () { if (S.joined) updateModeChip(); }, 250);
   function fmtTime(s) { return Math.floor(s / 60) + ':' + ('0' + Math.floor(s % 60)).slice(-2); }
   function itemReq(it, stats) {
     if (!it.req) return { ok: true, text: 'Nenhum' };

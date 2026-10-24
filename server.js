@@ -113,8 +113,8 @@ async function serveRanking(req, res) {
 }
 
 /* ------------------------------ salas e entidades ------------------------------ */
-function newRoom() {
-  const room = { id: nextRoomId++, players: new Map(), mobs: [], projs: [], later: [], ev: [], t: 0, now: 0, nid: 1, boss: null, quiet: false };
+function newRoom(mode) {
+  const room = { mode: D.MODES[mode] ? mode : 'classic', best: [], id: nextRoomId++, players: new Map(), mobs: [], projs: [], later: [], ev: [], t: 0, now: 0, nid: 1, boss: null, quiet: false };
   const tw = D.ZONES.reduce((s, z) => s + z.weight, 0);
   D.ZONES.forEach((z, zi) => {
     const n = Math.round((D.MOB_COUNT * z.weight) / tw);
@@ -267,7 +267,7 @@ function meMsg(p) {
     t: 'me', lv: p.level, pts: p.points, xp: p.xp, xn: p.level >= D.MAX_LEVEL ? 0 : D.xpNeed(p.level), stats: p.stats,
     hp: Math.round(p.hp), mhp: p.maxHp, inv: p.inv, eq: p.equip, act: p.active.map((a) => a.slot),
     fu: p.fused, mx: p.mixed ? [p.mixName, p.mixCd] : 0, wcd: [+p.wt[0].toFixed(2), +p.wt[1].toFixed(2)], scd: [+p.st[0].toFixed(2), +p.st[1].toFixed(2)],
-    arm: p.armor, armId: p.armorItem, alive: p.alive,
+    arm: p.armor, armId: p.armorItem, alive: p.alive, rk: p.rk || 0, rd: p.rd || 0, rs: p.rs || 0,
     q: { kills: p.kills, pk: p.pk, alive: Math.floor(p.aliveT), nod: Math.floor(p.nodT), one: p.oneHits, done: [...p.done] }
   };
 }
@@ -277,7 +277,7 @@ function saveMsg(p) {
 
 /* ------------------------------ combate ------------------------------ */
 // Novatos (nível NEWBIE_LEVEL ou menos) não lutam contra outros jogadores: não apanham nem batem. Monstros valem para todos.
-function pvpOk(a, b) { return a.level > D.NEWBIE_LEVEL && b.level > D.NEWBIE_LEVEL && !(a.simTeam && a.simTeam === b.simTeam); } // simTeam: só o simulador usa (robôs aliados)
+function pvpOk(a, b) { return !(a.room && a.room.mode === 'coop') && a.level > D.NEWBIE_LEVEL && b.level > D.NEWBIE_LEVEL && !(a.simTeam && a.simTeam === b.simTeam); } // no modo cooperativo ninguém fere ninguém // simTeam: só o simulador usa (robôs aliados)
 
 function eachEnemy(room, src, fn) {
   for (const m of room.mobs) if (m.alive) fn(m);
@@ -325,7 +325,7 @@ function killMob(room, m, src) {
   m.alive = false; m.respT = rnd(D.MOB_RESPAWN[0], D.MOB_RESPAWN[1]); m.tgt = null;
   ev(room, ['x', Math.round(m.x), Math.round(m.y), m.ki]);
   if (src && src.isPlayer && !src.gone && src.alive) {
-    addXp(room, src, m.def.xp);
+    addXp(room, src, Math.max(1, Math.round(m.def.xp * ((D.MODES[room.mode] || D.MODES.classic).mobXp))));
     src.kills[m.key] = (src.kills[m.key] || 0) + 1;
     if (m.def.tier >= 3 && m.hits <= D.ONEHIT_MAX_HITS) src.oneHits++; // "monstro forte" = faixa 3 ou mais, morto em poucos golpes
     rollDrops(room, src, m);
@@ -348,10 +348,13 @@ function killPlayer(room, v, src) {
     addXp(room, src, Math.floor(D.xpNeed(old) * D.PVP_XP_FRAC)); // 40% do XP do nível atual da vítima
     checkQuests(room, src);
     src.saveDirty = true;
-    feed(room, src.name + ' derrotou ' + v.name + ' (nv ' + old + ')');
+    if (room.mode === 'pvp') { src.rk = (src.rk || 0) + 1; src.rs = (src.rs || 0) + 1; } // contador da sala: abates e série (mortes seguidas sem morrer)
+    const streak = room.mode === 'pvp' && src.rs >= 3 ? ' — série de ' + src.rs + '!' : '';
+    feed(room, src.name + ' derrotou ' + v.name + ' (nv ' + old + ')' + streak);
   } else {
     feed(room, v.name + ' foi derrotado por ' + by + ' (nv ' + old + ')');
   }
+  if (room.mode === 'pvp') { v.rd = (v.rd || 0) + 1; v.rs = 0; }
   // Morreu = perde todo o nível atual. Equipamentos e progresso de missões permanecem.
   v.level = 1; v.xp = 0; v.points = 0; v.stats = { str: 1, dex: 1, man: 1, hlt: 1 };
   v.aliveT = 0; v.nodT = 0; v.oneHits = 0; v.stun = 0; v.slowT = 0;
@@ -1136,6 +1139,14 @@ function killBoss(room, m) {
     p.saveDirty = true;
   }
   feed(room, 'O ' + m.def.name + ' foi derrotado' + (names.length ? ' por ' + names.join(', ') : '') + '!');
+  if (room.mode === 'coop') { // cronômetro cooperativo: tempo da 1ª pancada até a queda, com o recorde da sala
+    const secs = Math.max(1, Math.round(room.now - (m.fightT0 === undefined ? room.now : m.fightT0)));
+    const prev = room.best[0] ? room.best[0].t : Infinity;
+    room.best.push({ t: secs, who: names.slice(0, 6) });
+    room.best.sort((a, b) => a.t - b.t); room.best.length = Math.min(room.best.length, 5);
+    feed(room, 'Tempo para derrubar o dragão: ' + fmtDur(secs) + (secs < prev ? (prev === Infinity ? ' (primeiro tempo da sala)' : ' — NOVO RECORDE da sala!') : ' (recorde: ' + fmtDur(prev) + ')'));
+    bcast(room, { t: 'best', best: room.best });
+  }
   m.dmgBy.clear(); m.threat.clear();
 }
 
@@ -1173,7 +1184,7 @@ function sendSnapshots(room) {
   });
   const plJson = JSON.stringify(pl);
   const B = room.boss; // o dragão aparece no minimapa para todos: [x, y, vida, vidaMax, estado (0 dorme, 1 luta, 2 volta, 3 morto), segundos para voltar]
-  const boJson = B ? JSON.stringify([Math.round(B.x), Math.round(B.y), Math.round(B.hp), B.maxHp, B.alive ? B.state : 3, B.alive ? 0 : Math.ceil(B.respT)]) : 'null';
+  const boJson = B ? JSON.stringify([Math.round(B.x), Math.round(B.y), Math.round(B.hp), B.maxHp, B.alive ? B.state : 3, B.alive ? 0 : Math.ceil(B.respT), B.alive && B.state === 1 && B.fightT0 !== undefined ? +(room.now - B.fightT0).toFixed(1) : 0]) : 'null'; // último: segundos de luta (cronômetro do modo cooperativo)
   room.players.forEach((me) => {
     const mb = [], pj = [], evs = [];
     for (const m of room.mobs) {
@@ -1197,11 +1208,12 @@ function sendSnapshots(room) {
 const skinsMsg = (sk) => ({ t: 'skins', own: sk.own, eq: sk.eq });
 
 function lbMsg(room) {
+  const pvp = room.mode === 'pvp';
   const arr = [...room.players.values()]
-    .sort((a, b) => b.level - a.level || b.xp - a.xp)
+    .sort((a, b) => (pvp ? (b.rk || 0) - (a.rk || 0) || (a.rd || 0) - (b.rd || 0) : 0) || b.level - a.level || b.xp - a.xp)
     .slice(0, 8)
-    .map((p) => [p.id, p.name, p.level, p.level >= D.MAX_LEVEL ? 1 : 0]);
-  return { t: 'lb', l: arr };
+    .map((p) => [p.id, p.name, p.level, p.level >= D.MAX_LEVEL ? 1 : 0, p.rk || 0, p.rd || 0]);
+  return { t: 'lb', l: arr, md: room.mode };
 }
 
 function updateRoom(room) {
@@ -1274,14 +1286,15 @@ async function startJoin(ws, m) {
 function doJoin(ws, m, acc, save) {
   const name = String(m.name || '').replace(/[^\p{L}\p{N} _.\-]/gu, '').trim().slice(0, 14) || 'Slime';
   const color = typeof m.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(m.color) ? m.color : '#5fd35f';
-  const room = rooms.find((r) => r.players.size < D.MAX_PLAYERS) || newRoom();
+  const mode = typeof m.mode === 'string' && Object.prototype.hasOwnProperty.call(D.MODES, m.mode) ? m.mode : 'classic';
+  const room = rooms.find((r) => r.mode === mode && r.players.size < D.MAX_PLAYERS) || newRoom(mode);
   const p = makePlayer(ws, name, color, save);
   if (acc) { p.acct = { id: acc.id, email: acc.email }; if (ranking) ranking.touch(acc.id, name); p.sk = D.skinCode(accounts.skinsOf(acc).eq); }
   ws.p = p; p.room = room;
   room.players.set(p.id, p);
   spawnPlayer(room, p);
   send(p, {
-    t: 'init', id: p.id, room: room.id, maxPlayers: D.MAX_PLAYERS, acct: acc ? acc.email : null,
+    t: 'init', id: p.id, room: room.id, mode: room.mode, best: room.best, maxPlayers: D.MAX_PLAYERS, acct: acc ? acc.email : null,
     roster: [...room.players.values()].map((q) => ({ id: q.id, name: q.name, color: q.color, sk: q.sk || 0 }))
   });
   if (acc) send(p, skinsMsg(accounts.skinsOf(acc)));

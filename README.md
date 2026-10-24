@@ -279,3 +279,13 @@ Para ter um domínio próprio depois, registre o domínio e adicione-o em **Sett
 ## Testes
 
 `npm test` sobe o servidor, conecta clientes falsos e confere: salas de 20, pontos de atributo (8 por nível, máximo 60), subida de nível, PvP ligado desde o nível 1, morte, XP de PvP, equipamento, fusão, drops sem duplicata, o catálogo da mochila, as 9 missões, as 9 armas atacando e usando habilidade, o dragão (dorme até levar golpe, vida que cresce com o grupo, arma mítica e Peitoral Dracônico para quem causa dano, com os atributos dele) e a validação do save. `node test/ranking.js` (também roda no `npm test`) confere os rankings: coroa, abates (nível mínimo da vítima e intervalo para repetir), tempo de jogo, ordenação dos dois rankings, gravação no arquivo e no Postgres de mentira, exclusão da conta, e os eventos de verdade no servidor (matar jogador, subir ao 20, derrotar o dragão, a API). `node test/contas.js` (também roda no `npm test`) confere as contas: cadastro, login, senha errada, códigos e recuperação de senha, limites de tentativas, exclusão, o mesmo conjunto de testes no arquivo e num Postgres de mentira, e a entrada no jogo com token (progresso vindo do servidor, importação do navegador, conta aberta em outro lugar, servidor de contas fora do ar).
+
+## Modos de jogo
+
+Na tela inicial o jogador escolhe o modo (a escolha fica guardada no navegador). **Cada modo tem as suas próprias salas** (até 20 jogadores por sala), então ninguém de um modo cai em outro. O progresso da conta (itens e missões) vale nos três.
+
+- **Clássico**: o jogo de sempre.
+- **Cooperativo**: ninguém fere ninguém (sem PvP) e os monstros dão 1,5x de XP. O objetivo é derrubar o dragão no menor tempo: o cronômetro corre da primeira pancada até ele cair e aparece na faixa do rodapé, junto com o recorde da sala (os 5 melhores tempos ficam na memória do servidor e somem se ele reiniciar). O dragão continua exigindo nível 20 para ser ferido.
+- **PvP**: todos contra todos, os monstros dão 3x de XP e a sala conta **abates, mortes e série** (3 abates seguidos sem morrer anunciam a série). O ranking da sala ordena por abates.
+
+Os valores de XP ficam em `MODES` em `game-data.js`. Teste: `test/modos.js`.
