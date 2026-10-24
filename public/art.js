@@ -1591,7 +1591,7 @@
 
 
   /* ---------- mapa em blocos ----------
-     O mundo é grande (7200 x 4500): em vez de uma imagem gigante, cada bloco de 640 x 640 é pintado quando aparece na tela
+     O mundo é grande (14400 x 9000): em vez de uma imagem gigante, cada bloco de 640 x 640 é pintado quando aparece na tela
      e guardado. Os enfeites saem de "células" com sorteio fixo, então os blocos se encaixam sem emenda e o mapa é sempre igual. */
   var TILE = 640, TSC = 0.7, CELL = 128, MARGIN = 170, tiles = {}, tileKeys = [], MAX_TILES = 48;
   var LAIR = (GD.BOSS && GD.BOSS.clear) || 330;

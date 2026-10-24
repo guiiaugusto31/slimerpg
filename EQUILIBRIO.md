@@ -69,6 +69,8 @@ Resultados do simulador (`node tools/simular.js ...`) e as decisões tomadas a p
 
 Sobre o PvP: já nas rodadas antigas da sala cheia (20 robôs) ele era brutal nos níveis baixos. Para isso existe `NEWBIE_LEVEL` (proteção de novato), que cheguei a deixar em 6; a pedido seu o PvP agora vale desde o nível 1 (`NEWBIE_LEVEL = 0`), então espere mais mortes nos primeiros níveis em sala cheia. `PK_MIN_LEVEL` continua em 8 para a missão da Varinha não valer caçar novatos.
 
+**XP do Clássico em 1,5x.** A pedido seu, no modo Clássico os monstros passaram a dar 1,5x de XP (`MODES.classic.mobXp`, antes 1x); o Cooperativo já era 1,5x e o PvP continua em 3x. As rodadas acima foram medidas com 1x e ainda não foram refeitas: com o valor novo o nível 20 deve chegar mais cedo (para medir, `node tools/simular.js progressao --rapido`). O XP por matar jogador (40% do nível da vítima) não mudou.
+
 ## 3. Dragão ancestral
 
 **Teste.** Grupos de 1, 3, 5 e 10 robôs de nível 20 contra o dragão, 12 lutas por cenário (limite de 300 s). Cada robô veste a melhor faixa que os atributos dele permitem (os requisitos valem de verdade). Os robôs são aliados entre si e desviam dos avisos com 50% ou 100% de acerto.

@@ -11,6 +11,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@500;700;800&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="application-name" content="SlimeRPG">
+<meta name="apple-mobile-web-app-title" content="SlimeRPG">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -63,6 +68,7 @@
     <button type="button" id="rankOpenTitle" class="acct-open rank-open">Rankings</button>
     <button type="button" id="shopOpenTitle" class="acct-open rank-open">Loja de skins</button>
     <button type="button" class="acct-open rank-open snd-btn" title="Música e efeitos sonoros">Som: música e efeitos</button>
+    <button type="button" id="installBtn" class="acct-open rank-open" hidden>Instalar o jogo no aparelho</button>
     <details class="how">
       <summary>Como jogar</summary>
       <ul>
@@ -212,5 +218,6 @@
 <script src="loja.js"></script>
 <script src="audio.js"></script>
 <script src="game.js"></script>
+<script src="pwa.js"></script>
 </body>
 </html>

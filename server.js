@@ -21,7 +21,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
-  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav'
+  '.webmanifest': 'application/manifest+json', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav'
 };
 
 /* ------------------------------ utilidades ------------------------------ */
@@ -367,7 +367,7 @@ function killPlayer(room, v, src) {
       src.pk++;
       if (ranking && src.acct) { const vk = v.acct ? 'a' + v.acct.id : 'g' + String(v.name).toLowerCase(); if (room.mode === 'classic') ranking.pvpKill(src.acct.id, vk); }
     }
-    addXp(room, src, Math.floor(D.xpNeed(old) * D.PVP_XP_FRAC)); // 40% do XP do nível atual da vítima
+    addXp(room, src, Math.floor(D.totalXp(old, v.xp) * D.PVP_XP_FRAC)); // 40% de todo o XP que a vítima tinha (níveis já passados + o do nível atual)
     checkQuests(room, src);
     src.saveDirty = true;
     if (room.mode === 'pvp') { src.rk = (src.rk || 0) + 1; src.rs = (src.rs || 0) + 1; if (ranking && src.acct) ranking.modeKill(src.acct.id, v.acct ? 'a' + v.acct.id : 'g' + String(v.name).toLowerCase()); } // contador da sala: abates e série (mortes seguidas sem morrer)
@@ -524,11 +524,26 @@ function inCone(p, t, R, ang, width) {
   return Math.abs(angDiff(a, ang)) <= width / 2 + Math.asin(Math.min(1, t.r / Math.max(d, 1)));
 }
 
+// Corte em cone: quem é atingido e a forma MÁXIMA da área de dano. O dano conta a borda do alvo (inCone): um monstro é pego se a borda dele chega
+// a `alcance + meio corpo` e a abertura ganha asin(raio/distância) de cada lado. Para o raio `rt` do maior alvo, a forma máxima tem alcance base + rt e
+// abertura width + 2·asin(rt/alcance), e a animação percorre exatamente isso (a arma, a luz no chão); `rt` e `width` seguem no efeito para a luz abrir
+// as laterais do jeito que o dano abre. rt ≤ 90 (o dragão é o maior).
+function coneHits(room, p, R, ang, width, e) {
+  const base = R + p.r * 0.5, hits = []; let rt = e ? e.r : 0;
+  eachEnemy(room, p, (t) => { if (inCone(p, t, R, ang, width)) { hits.push(t); rt = Math.max(rt, t.r); } });
+  rt = Math.min(90, rt);
+  const reach = base + rt;
+  return { hits, reach, rt, width, span: width + 2 * Math.asin(Math.min(1, rt / reach)) };
+}
+
 function basicAttack(room, p, a, tg) {
   const F = a.F, it = a.item, fam = it.fam, tier = it.tier, e = tg.e, ang = tg.ang;
   const dmg = D.weaponDamage(it, p.stats);
   p.face = ang;
-  ev(room, ['a', Math.round(p.x), Math.round(p.y), p.id, a.slot, +ang.toFixed(2), 0]); // animação da arma no cliente
+  // animação da arma no cliente; espada e chicote levam o alcance máximo e a abertura do golpe (a lâmina percorre exatamente a área de dano)
+  const arc = F.atk === 'arc' ? coneHits(room, p, F.range, ang, F.arcAng, e) : null;
+  ev(room, arc ? ['a', Math.round(p.x), Math.round(p.y), p.id, a.slot, +ang.toFixed(2), 0, Math.round(arc.reach), +arc.span.toFixed(3)]
+    : ['a', Math.round(p.x), Math.round(p.y), p.id, a.slot, +ang.toFixed(2), 0]);
   switch (F.atk) {
     case 'single':
       fx(room, 'thrust', e.x, e.y, ang, 34, fam, tier);
@@ -539,15 +554,14 @@ function basicAttack(room, p, a, tg) {
       eachEnemy(room, p, (t) => { if (dist(t.x, t.y, e.x, e.y) - t.r <= F.splash) hit(room, p, t, dmg, F.type); });
       break;
     case 'arc': {
-      const R = F.range + p.r * 0.5;
-      fx(room, 'arc', p.x, p.y, ang, R, fam, tier, F.arcAng);
-      eachEnemy(room, p, (t) => { if (inCone(p, t, F.range, ang, F.arcAng)) hit(room, p, t, dmg, F.type); });
+      fx(room, 'arc', p.x, p.y, ang, arc.reach, fam, tier, [+F.arcAng.toFixed(3), Math.round(arc.rt)]);
+      arc.hits.forEach((t) => hit(room, p, t, dmg, F.type));
       break;
     }
-    case 'ring': {
+    case 'ring': { // sinos: a badalada acontece no monstro que está sendo atacado e atinge quem estiver ao redor dele
       const R = F.range + p.r * 0.5;
-      fx(room, 'ring', p.x, p.y, 0, R, fam, tier);
-      eachEnemy(room, p, (t) => { if (dist(p.x, p.y, t.x, t.y) - t.r <= R) hit(room, p, t, dmg, F.type); });
+      fx(room, 'ring', e.x, e.y, 0, R, fam, tier);
+      eachEnemy(room, p, (t) => { if (t === e || dist(e.x, e.y, t.x, t.y) - t.r <= R) hit(room, p, t, dmg, F.type); });
       break;
     }
     case 'proj':
@@ -587,7 +601,9 @@ function trySkill(room, p, a, mix) {
   const ang = trig.ang;
   if (!mix) p.st[i] = S.cd;
   p.face = ang;
-  ev(room, ['a', Math.round(p.x), Math.round(p.y), p.id, i, +ang.toFixed(2), 1]);
+  const cone = S.kind === 'cone' ? coneHits(room, p, S.range * am, ang, S.angle * (fu ? 1.25 : 1), trig.e) : null;
+  ev(room, cone ? ['a', Math.round(p.x), Math.round(p.y), p.id, i, +ang.toFixed(2), 1, Math.round(cone.reach), +cone.span.toFixed(3)]
+    : ['a', Math.round(p.x), Math.round(p.y), p.id, i, +ang.toFixed(2), 1]);
   switch (S.kind) {
     case 'burst': {
       const R = S.radius * am;
@@ -605,9 +621,9 @@ function trySkill(room, p, a, mix) {
       break;
     }
     case 'cone': {
-      const R = S.range * am, width = S.angle * (fu ? 1.25 : 1);
-      fx(room, 's_cone', p.x, p.y, ang, R, fam, tier, +width.toFixed(2));
-      eachEnemy(room, p, (t) => { if (inCone(p, t, R, ang, width)) hit(room, p, t, dmg, type); });
+      const width = S.angle * (fu ? 1.25 : 1);
+      fx(room, 's_cone', p.x, p.y, ang, cone.reach, fam, tier, [+width.toFixed(3), Math.round(cone.rt)]);
+      cone.hits.forEach((t) => hit(room, p, t, dmg, type));
       break;
     }
     case 'dash': {
