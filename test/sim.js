@@ -52,9 +52,9 @@ async function main() {
 
   console.log('Salas');
   const many = [];
-  for (let i = 0; i < 22; i++) many.push(await client('Bot' + i, '#33aa55'));
+  for (let i = 0; i < 32; i++) many.push(await client('Bot' + i, '#33aa55'));
   const st = await getJson('/status');
-  ok(st.rooms === 2 && st.perRoom[0].players === 20 && st.perRoom[1].players === 2, '22 jogadores → sala de 20 + sala de 2 (' + JSON.stringify(st.perRoom) + ')');
+  ok(st.rooms === 2 && st.perRoom[0].players === 30 && st.perRoom[1].players === 2, '32 jogadores → sala de 30 + sala de 2 (' + JSON.stringify(st.perRoom) + ')');
   many.forEach((c) => c.ws.close());
   await sleep(300);
   ok(rooms.length === 0, 'salas vazias são removidas');
@@ -89,8 +89,8 @@ async function main() {
   ok(pa.kills.cogumelo === 1, 'contou 1 kill de cogumelo');
   ok(D.xpNeed(1) === 5 && D.xpNeed(2) === 10 && D.xpNeed(3) === 77, 'curva inicial: 5 XP, 10 XP, depois 77 XP');
 
-  // 1 cogumelo (5 XP) leva do nível 1 ao 2 e dá 8 pontos de atributo para o jogador distribuir
-  ok(A.lvl.length === 1 && pa.level === 2 && pa.xp === 0, '1 cogumelo leva do nível 1 ao 2 (nível ' + pa.level + ', xp ' + pa.xp + ')');
+  // 1 cogumelo (5 XP base; no Clássico os monstros dão 1,5x, então 8 XP) leva do nível 1 ao 2 e dá 8 pontos de atributo para o jogador distribuir
+  ok(A.lvl.length === 1 && pa.level === 2 && pa.xp === 3, '1 cogumelo leva do nível 1 ao 2, com 8 XP no Clássico (nível ' + pa.level + ', xp ' + pa.xp + ')');
   ok(A.lvl[0].gain && Object.values(A.lvl[0].gain).every((g) => g >= 1 && g <= 3) && pa.points === 0, 'cada nível rola 1d3 em cada atributo');
   pa.points = 8;
   const s0 = Object.assign({}, pa.stats);
@@ -107,14 +107,14 @@ async function main() {
   ok(pa.stats.dex === 60 && pa.stats.man === s0.man + 1 && pa.points === 94, 'no máximo ou número inválido não passa (' + pa.stats.man + ')');
   pa.points = 0; Object.assign(pa.stats, s0); recalcAll(pa); pa.hp = pa.maxHp;
 
-  // 2 cogumelos levam do nível 2 ao 3
+  // com 1,5x de XP, o 2º cogumelo (11 XP somados) já leva do nível 2 ao 3
   const c2 = room.mobs.find((m) => m.key === 'cogumelo' && m !== cog), c3 = room.mobs.find((m) => m.key === 'cogumelo' && m !== cog && m !== c2);
   mobAt(c2, W().cx, W().cy + 200); room.mobs.forEach((m) => { if (m !== c2) away(m); });
   await sleep(1200);
-  ok(pa.level === 2 && pa.xp === 5, 'depois do 1º cogumelo no nível 2: 5/10 XP (nível ' + pa.level + ', xp ' + pa.xp + ')');
+  ok(pa.level === 3 && pa.xp === 1, 'o 2º cogumelo (3 + 8 = 11 XP, precisa de 10) leva ao nível 3, sobrando 1 (nível ' + pa.level + ', xp ' + pa.xp + ')');
   mobAt(c3, W().cx, W().cy + 200); room.mobs.forEach((m) => { if (m !== c3) away(m); });
   await sleep(1200);
-  ok(A.lvl.length === 2 && pa.level === 3, '2 cogumelos levam do nível 2 ao 3 (nível ' + pa.level + ')');
+  ok(A.lvl.length === 2 && pa.level === 3 && pa.xp === 9, 'o 3º cogumelo só soma XP no nível 3 (nível ' + pa.level + ', xp ' + pa.xp + ')');
 
   // PvP ligado para todos desde o nível 1 (sem proteção de novato); só vítimas de nível 8+ contam para a missão
   ok(D.NEWBIE_LEVEL === 0 && D.PK_MIN_LEVEL === 8, 'PvP liga desde o nível 1; só vítimas de nível 8+ contam para a missão');
@@ -126,13 +126,13 @@ async function main() {
 
   // PvP: XP = 40% do XP do nível da vítima
   pa.level = 8; pa.xp = 0; pb.level = 8; pb.hp = 1; boost(pb, { str: 1 });
-  const xp0 = pa.xp, lvl0 = pa.level;
+  const xp0 = pa.xp, lvl0 = pa.level, pbTotal = D.totalXp(8, pb.xp);
   place(pb, pa.x + 40, pa.y); pa.protectUntil = 0; pb.protectUntil = 0;
   await sleep(1000);
   ok(!pb.alive, 'jogador morreu para a faca do outro');
   ok(pa.pk === 1, 'contou 1 jogador derrotado');
-  const expect = Math.floor(D.xpNeed(8) * 0.4);
-  ok(pa.xp - xp0 === expect || pa.level > lvl0, 'XP de PvP = 40% do XP do nível da vítima (' + expect + ')');
+  const expect = Math.floor(pbTotal * 0.4);
+  ok(pa.xp - xp0 === expect || pa.level > lvl0, 'XP de PvP = 40% de todo o XP da vítima (' + expect + ')');
   ok(B.death && B.death.lvl === 8, 'vítima recebeu mensagem de morte (nível perdido: ' + (B.death && B.death.lvl) + ')');
   ok(pb.level === 1 && pb.stats.str === 1 && pb.xp === 0, 'vítima voltou para nível 1 e atributos 1');
   B.send({ t: 'respawn' });
@@ -303,7 +303,7 @@ async function main() {
   const dSt = D.armorStats(dracoItem, { hlt: 40 }), vSt = D.armorStats(D.ITEMS.vital_5, { hlt: 40 });
   ok(dSt.rp > 0 && dSt.rm > 0 && dSt.rp === dSt.rm && dSt.hp > vSt.hp && D.armorStats(D.ITEMS.blindado_5, { hlt: 40 }).rm === 0, 'Dracônico dá vida (mais que o Vital lendário) e resiste a dano físico E mágico (' + JSON.stringify(dSt) + ')');
   ok(real.filter((it) => D.howToGet(it).kind === 'quest').length === D.QUESTS.length, 'cada missão entrega 1 item do catálogo');
-  ok(D.WORLD.w === 7200 && D.WORLD.h === 4500, 'mapa com o dobro do tamanho original (7200 x 4500)');
+  ok(D.WORLD.w === 14400 && D.WORLD.h === 9000, 'mapa com o quádruplo do tamanho original (14400 x 9000)');
   const order = ['cogumelo', 'coelho', 'lobo', 'javali', 'broto', 'aranha'];
   ok(order.every((k, i) => i === 0 || (D.MOBS[k].hp > D.MOBS[order[i - 1]].hp && D.MOBS[k].dmg >= D.MOBS[order[i - 1]].dmg)), 'monstros ficam mais fortes a cada zona (vida e dano crescentes)');
 

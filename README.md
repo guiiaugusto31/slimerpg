@@ -11,7 +11,7 @@ npm start
 
 Abra http://localhost:3000. Para testar com mais jogadores, abra várias abas ou acesse pelo IP da sua máquina na rede.
 
-Cada sala comporta 20 jogadores. Quando uma enche, o servidor abre outra automaticamente. Para mudar a porta: `PORT=8080 npm start`.
+Cada sala comporta 30 jogadores. Quando uma enche, o servidor abre outra automaticamente. Para mudar a porta: `PORT=8080 npm start`.
 
 ## Versão de teste (sem instalar nada)
 
@@ -177,7 +177,7 @@ Sem `RESEND_API_KEY` nem `SMTP_URL` o jogo **não confirma o e-mail** e a recupe
 
 Dois rankings, abertos pelo botão **Rankings** (tecla `R`, e também na tela inicial). **Só jogadores com conta entram**: o save do navegador pode ser editado, o do servidor não, e os números dos rankings ficam numa linha própria por conta (não no save), então importar um save adulterado não adianta.
 
-- **PvP**: lista quem **já chegou ao nível 20** (a coroa), ordenada pelos **abates de jogadores**. Os abates contam desde o nível 1, mas só vítimas **do nível 8 para cima** (a mesma regra da missão de PvP, para não valer caçar novatos), e a **mesma vítima só conta de novo depois de 5 minutos** (para não dar para farmar uma segunda conta). Quem ainda não chegou ao 20 já acumula abates; entra na lista, com eles, quando chegar.
+- **PvP**: lista quem **já chegou ao nível 20** (a coroa), ordenada pelos **abates de jogadores**. Os abates contam desde o nível 1 e **de vítimas de qualquer nível** (só a missão da Varinha continua exigindo vítimas do nível 8 para cima), e a **mesma vítima só conta de novo depois de 5 segundos** (para não dar para farmar uma segunda conta). Quem ainda não chegou ao 20 já acumula abates; entra na lista, com eles, quando chegar.
 - **Dragão**: lista quem derrotou o Dragão ancestral, do **menor para o maior tempo de jogo** até a primeira vitória. "Tempo de jogo" é o tempo **conectado** da conta, somado entre todas as sessões (conta também o tempo parado e o da tela de morte). A linha mostra ainda a **duração da luta** (do primeiro golpe até a morte dele) e quantas vitórias a pessoa tem. A vitória vale para quem causa 6% ou mais da vida dele, igual à arma mítica.
 
 Detalhes: cada lista mostra os 50 primeiros; quem está logado vê a própria posição e a linha marcada. O nome mostrado é o último que a conta usou ao entrar. Os rankings **não mostram e-mail**, e excluir a conta apaga a pessoa deles. Ficam no mesmo armazenamento das contas (tabela `hall` no Postgres), então só **duram** com `DATABASE_URL`; sem banco, zeram quando o servidor reinicia (o painel avisa). O servidor grava a cada 30 s, ao sair e ao desligar (SIGTERM). A API é `GET /api/ranking`, pública. Quem já tinha conta antes desta versão começa com tempo de jogo e abates zerados.
@@ -288,7 +288,7 @@ Para ter um domínio próprio depois, registre o domínio e adicione-o em **Sett
 
 ## Modos de jogo
 
-Na tela inicial o jogador escolhe o modo (a escolha fica guardada no navegador). **Cada modo tem as suas próprias salas** (até 20 jogadores por sala), então ninguém de um modo cai em outro. O progresso da conta (itens e missões) vale nos três.
+Na tela inicial o jogador escolhe o modo (a escolha fica guardada no navegador). **Cada modo tem as suas próprias salas** (até 30 jogadores por sala), então ninguém de um modo cai em outro. O progresso da conta (itens e missões) vale no Clássico e no Cooperativo. **O PvP não usa nem guarda as armas dos outros modos**: nele você começa só com a faca e as armas míticas que já ganhou do dragão, e o que achar lá (itens comuns, missões, abates) não é salvo. Só as armas míticas dropadas do dragão ficam guardadas; o resto do seu save continua exatamente como estava (`makePlayer` e `saveMsg` em `server.js`).
 
 - **Clássico**: o jogo de sempre, com os monstros dando 1,5x de XP (matar jogador dá 40% de todo o XP que ele tinha, somando os níveis já passados).
 - **Cooperativo**: ninguém fere ninguém (sem PvP) e os monstros dão 1,5x de XP. O objetivo é derrubar o dragão no menor tempo: o cronômetro corre da primeira pancada até ele cair e aparece na faixa do rodapé, junto com o recorde da sala (os 5 melhores tempos ficam na memória do servidor e somem se ele reiniciar). O dragão continua exigindo nível 20 para ser ferido.
@@ -296,6 +296,8 @@ Na tela inicial o jogador escolhe o modo (a escolha fica guardada no navegador).
 
 Os valores de XP ficam em `MODES` em `game-data.js`. Teste: `test/modos.js`.
 
-**Rankings por modo** (só para quem joga com conta). O painel Rankings tem 3 abas, uma por modo: *Clássico* (dois rankings: *Abates* de quem chegou ao nível 20 e *Dragão*, o menor tempo de jogo até a 1ª vitória), *PvP* (abates de qualquer nível; a mesma vítima só conta de novo depois de 5 minutos) e *PvE* (modo Cooperativo: menor tempo de luta, em minutos, da 1ª pancada até o dragão cair; vale o melhor tempo de cada conta). Cada abate e cada vitória só conta no ranking do modo em que aconteceu.
+**Modo espectador e contador de abates (campeonatos).** Na tela inicial, o botão *Assistir como espectador* entra no modo escolhido com câmera livre: o espectador é invisível, não luta e não conta como jogador (até 10 por sala; vai para a sala mais cheia, e o botão *Próxima sala* troca de sala). Quem entra com a conta do **administrador** vê também o botão *Ligar contador de abates*: o painel *Abates da sala* aparece na tela de todos da sala e conta só quem joga **com conta**, vítimas de qualquer nível, com a regra de 5 segundos para a mesma vítima. *Zerar* recomeça a contagem e *Desligar* apaga o painel. Quem é administrador é definido na variável de ambiente `ADMIN_EMAIL` (na Render: Environment → `ADMIN_EMAIL` = seu e-mail; vários separados por vírgula). A conta precisa existir e estar confirmada; crie a sua conta antes, para ninguém registrar esse e-mail primeiro.
+
+**Rankings por modo** (só para quem joga com conta). O painel Rankings tem 3 abas, uma por modo: *Clássico* (dois rankings: *Abates* de quem chegou ao nível 20 e *Dragão*, o menor tempo de jogo até a 1ª vitória), *PvP* (abates de qualquer nível; a mesma vítima só conta de novo depois de 5 segundos) e *PvE* (modo Cooperativo: menor tempo de luta, em minutos, da 1ª pancada até o dragão cair; vale o melhor tempo de cada conta). Cada abate e cada vitória só conta no ranking do modo em que aconteceu.
 
 Cada ranking tem duas visões: **Semanal** (zera toda segunda-feira às 0h, horário de Brasília; no ranking do dragão vale o menor tempo de luta da semana) e **Desde o início** (o geral, que nunca zera). O que acontece na semana soma nas duas.

@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const D = require('./game-data');
+const { REPEAT_MS } = require('./ranking');
 let accounts = null; // contas por e-mail; criado mais abaixo (fora do simulador)
 let ranking = null, rankingReady = Promise.resolve(); // rankings por conta (ranking.js); só existem junto com as contas
 const online = new Map(); // id da conta -> WebSocket em uso (uma conta só joga em um lugar por vez)
@@ -81,6 +82,7 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({
       rooms: rooms.length,
       players: rooms.reduce((s, r) => s + r.players.size, 0),
+      modes: Object.keys(D.MODES).reduce((o, k) => { o[k] = rooms.reduce((s, r) => s + (r.mode === k ? r.players.size : 0), 0); return o; }, {}),
       perRoom: rooms.map((r) => ({ id: r.id, players: r.players.size }))
     }));
   }
@@ -134,7 +136,7 @@ async function claimPrize(req, res) {
 
 /* ------------------------------ salas e entidades ------------------------------ */
 function newRoom(mode) {
-  const room = { mode: D.MODES[mode] ? mode : 'classic', best: [], id: nextRoomId++, players: new Map(), mobs: [], projs: [], later: [], ev: [], t: 0, now: 0, nid: 1, boss: null, quiet: false };
+  const room = { mode: D.MODES[mode] ? mode : 'classic', best: [], id: nextRoomId++, players: new Map(), specs: new Map(), kc: null, mobs: [], projs: [], later: [], ev: [], t: 0, now: 0, nid: 1, boss: null, quiet: false };
   const tw = D.ZONES.reduce((s, z) => s + z.weight, 0);
   D.ZONES.forEach((z, zi) => {
     const n = Math.round((D.MOB_COUNT * z.weight) / tw);
@@ -188,7 +190,7 @@ function resetMob(m) {
   m.tgt = null; m.wanderT = rnd(0, 3); m.wx = m.x; m.wy = m.y; m.returning = false;
 }
 
-function makePlayer(ws, name, color, save) {
+function makePlayer(ws, name, color, save, mode) {
   const p = {
     id: nextPlayerId++, ws, isPlayer: true, name, color, gone: false, room: null,
     x: 0, y: 0, face: 0, mx: 0, my: 0, am: false, aim: 0,
@@ -198,11 +200,18 @@ function makePlayer(ws, name, color, save) {
     combatT: 0, aliveT: 0, nodT: 0, oneHits: 0, lastSave: -99, saveDirty: false,
     armor: { hp: 0, rp: 0, rm: 0 }, armorItem: 'vital_0', active: [], fused: false, sk: 0, trails: [], inQ: [], qActive: false, ack: 0, qMiss: 0
   };
-  loadSave(p, save);
+  if (mode === 'pvp') { // PvP não leva o progresso dos outros modos: só as armas míticas do dragão ficam; o resto do save fica guardado como estava
+    p.pvp = true;
+    const tmp = { inv: [], kills: {}, pk: 0, done: new Set(), equip: { w: ['faca', null], a: 'vital_0' } };
+    loadSave(tmp, save);
+    p.baseSave = { items: tmp.inv, equip: tmp.equip, kills: tmp.kills, pk: tmp.pk, done: [...tmp.done] };
+    loadSave(p, { items: tmp.inv.filter(isMythicWeapon), equip: tmp.equip });
+  } else loadSave(p, save);
   recalc(p);
   return p;
 }
 
+const isMythicWeapon = (id) => !!(D.ITEMS[id] && D.ITEMS[id].kind === 'weapon' && D.ITEMS[id].tier === D.MYTHIC_TIER);
 // Valida o progresso salvo no navegador do jogador (sem login: o save vive no localStorage).
 function loadSave(p, s) {
   if (!s || typeof s !== 'object') return;
@@ -275,6 +284,7 @@ function send(p, obj) {
 function bcast(room, obj, except) {
   const s = JSON.stringify(obj);
   room.players.forEach((p) => { if (p !== except) send(p, s); });
+  room.specs.forEach((p) => { if (p !== except) send(p, s); });
 }
 function feed(room, text) { bcast(room, { t: 'feed', m: text }); }
 function ev(room, e) { if (room.ev.length < 400) room.ev.push(e); }
@@ -292,6 +302,11 @@ function meMsg(p) {
   };
 }
 function saveMsg(p) {
+  if (p.pvp) { // no PvP só entram no save as armas míticas (as novas do dragão); o resto continua o que era antes
+    const b = p.baseSave, items = b.items.slice();
+    for (const id of p.inv) if (isMythicWeapon(id) && !items.includes(id)) items.push(id);
+    return { t: 'save', d: { items, equip: b.equip, kills: b.kills, pk: b.pk, done: b.done } };
+  }
   return { t: 'save', d: { items: p.inv, equip: p.equip, kills: p.kills, pk: p.pk, done: [...p.done] } };
 }
 
@@ -354,6 +369,39 @@ function killMob(room, m, src) {
   }
 }
 
+/* ------------------------- espectador e contador de abates ------------------------- */
+// ADMIN_EMAIL (variável de ambiente, vários separados por vírgula): contas com esses e-mails (já confirmados) podem ligar o contador.
+const ADMINS = String(process.env.ADMIN_EMAIL || '').toLowerCase().split(/[,;\s]+/).filter(Boolean);
+const MAX_SPECS = 10; // espectadores por sala
+const isAdminAcc = (acc) => !!(acc && acc.verified && acc.email && ADMINS.includes(String(acc.email).toLowerCase()));
+// Contador de abates da sala (ligado pelo administrador): conta só quem joga com conta, vítimas de qualquer nível, mesma regra dos 5 segundos.
+function kcAdd(room, src, v) {
+  const kc = room.kc;
+  if (!kc || !src.acct) return;
+  const key = src.acct.id + '>' + (v.acct ? 'a' + v.acct.id : 'g' + String(v.name).toLowerCase()), t = Date.now(), last = kc.recent.get(key);
+  if (last !== undefined && t - last < REPEAT_MS) return;
+  kc.recent.set(key, t);
+  if (kc.recent.size > 2000) for (const [k, ts] of kc.recent) if (t - ts >= REPEAT_MS) kc.recent.delete(k);
+  const row = kc.rows.get(src.acct.id) || { name: src.name, k: 0, first: t };
+  row.name = src.name; row.k++; row.last = t;
+  kc.rows.set(src.acct.id, row);
+  kc.dirty = true;
+}
+function kcMsg(room) {
+  if (!room.kc) return { t: 'kc', on: false };
+  const l = [...room.kc.rows.values()].sort((a, b) => b.k - a.k || a.last - b.last).slice(0, 10).map((r) => [r.name, r.k]);
+  return { t: 'kc', on: true, l };
+}
+function updateSpec(s) {
+  const reps = s.inQ.length > 2 ? 2 : 1;
+  for (let r = 0; r < reps; r++) {
+    const c = s.inQ.shift();
+    if (c) { s.mx = c.x; s.my = c.y; s.ack = c.s; s.qMiss = 0; }
+    else { if (++s.qMiss > 6) { s.mx = 0; s.my = 0; } continue; }
+    if (s.mx || s.my) { s.x += s.mx * s.spd * DT; s.y += s.my * s.spd * DT; clampWorld(s); s.face = Math.atan2(s.my, s.mx); }
+  }
+}
+
 function killPlayer(room, v, src) {
   const old = v.level;
   v.alive = false; v.mx = 0; v.my = 0;
@@ -363,10 +411,11 @@ function killPlayer(room, v, src) {
   if (tomb) fx(room, 'tomb', v.x, v.y, 0, 40, 'faca', tomb);
   send(v, { t: 'death', by, lvl: old });
   if (src && src.isPlayer && src !== v && !src.gone && src.alive) {
-    if (old >= D.PK_MIN_LEVEL) { // só vítimas de nível razoável contam (para a missão e para o ranking de PvP): evita caçar novatos
-      src.pk++;
+    if (old >= D.PK_MIN_LEVEL) src.pk++; // a missão 'derrotar jogadores' só conta vítimas de nível razoável (para não valer caçar novatos)
+    { // o ranking de abates do Clássico conta vítimas de qualquer nível
       if (ranking && src.acct) { const vk = v.acct ? 'a' + v.acct.id : 'g' + String(v.name).toLowerCase(); if (room.mode === 'classic') ranking.pvpKill(src.acct.id, vk); }
     }
+    kcAdd(room, src, v);
     addXp(room, src, Math.floor(D.totalXp(old, v.xp) * D.PVP_XP_FRAC)); // 40% de todo o XP que a vítima tinha (níveis já passados + o do nível atual)
     checkQuests(room, src);
     src.saveDirty = true;
@@ -1233,7 +1282,7 @@ function sendSnapshots(room) {
   const plJson = JSON.stringify(pl);
   const B = room.boss; // o dragão aparece no minimapa para todos: [x, y, vida, vidaMax, estado (0 dorme, 1 luta, 2 volta, 3 morto), segundos para voltar]
   const boJson = B ? JSON.stringify([Math.round(B.x), Math.round(B.y), Math.round(B.hp), B.maxHp, B.alive ? B.state : 3, B.alive ? 0 : Math.ceil(B.respT), B.alive && B.state === 1 && B.fightT0 !== undefined ? +(room.now - B.fightT0).toFixed(1) : 0]) : 'null'; // último: segundos de luta (cronômetro do modo cooperativo)
-  room.players.forEach((me) => {
+  const snapFor = (me) => {
     const mb = [], pj = [], evs = [];
     for (const m of room.mobs) {
       if (!m.alive || !near(me, m.x, m.y)) continue;
@@ -1248,8 +1297,15 @@ function sendSnapshots(room) {
       if (near(me, pr.x, pr.y)) pj.push([pr.id, Math.round(pr.x), Math.round(pr.y), +pr.ang.toFixed(2), pr.k, pr.fam, pr.tier, Math.round(pr.r)]);
     }
     for (const e of room.ev) if (near(me, e[1], e[2])) evs.push(e);
-    send(me, '{"t":"s","n":' + room.t + ',"p":' + plJson + ',"mb":' + JSON.stringify(mb) + ',"pj":' + JSON.stringify(pj) + ',"ev":' + JSON.stringify(evs) + ',"bo":' + boJson + '}');
-  });
+    let pjs = plJson;
+    if (me.spec) { // o espectador aparece só na própria lista (para o cliente andar com a mesma predição); ninguém mais o vê
+      const own = JSON.stringify({ i: me.id, x: Math.round(me.x), y: Math.round(me.y), h: 1, m: 1, l: 1, a: +me.face.toFixed(2), r: 12, w: [], ar: 'vital_0', q: me.ack, v: Math.round(me.spd * 10), f: 64 });
+      pjs = '[' + own + (pl.length ? ',' + plJson.slice(1) : ']');
+    }
+    send(me, '{"t":"s","n":' + room.t + ',"p":' + pjs + ',"mb":' + JSON.stringify(mb) + ',"pj":' + JSON.stringify(pj) + ',"ev":' + JSON.stringify(evs) + ',"bo":' + boJson + '}');
+  };
+  room.players.forEach(snapFor);
+  room.specs.forEach(snapFor);
   room.ev.length = 0;
 }
 
@@ -1267,6 +1323,7 @@ function lbMsg(room) {
 function updateRoom(room) {
   room.now += DT; room.t++;
   room.players.forEach((p) => updatePlayer(room, p));
+  room.specs.forEach((sp) => updateSpec(sp));
   updateProjs(room);
   if (room.later.length) for (let i = room.later.length - 1; i >= 0; i--) { const l = room.later[i]; l.t -= DT; if (l.t <= 0) { room.later.splice(i, 1); try { l.fn(); } catch (e) { /* jogador saiu */ } } } // ações atrasadas das misturas
   for (const m of room.mobs) updateMob(room, m);
@@ -1280,6 +1337,7 @@ function updateRoom(room) {
     room.players.forEach((p) => { checkQuests(room, p); if (ranking && p.acct) ranking.addPlay(p.acct.id, 1); }); // missões baseadas em tempo; tempo de jogo da conta
     if (!room.quiet) bcast(room, lbMsg(room));
   }
+  if (room.kc && room.kc.dirty && !room.quiet) { room.kc.dirty = false; bcast(room, kcMsg(room)); }
   room.players.forEach((p) => {
     if (p.saveDirty && room.now - p.lastSave >= (p.acct ? 15 : 2)) { persist(p); p.lastSave = room.now; p.saveDirty = false; }
   });
@@ -1316,10 +1374,12 @@ async function startJoin(ws, m) {
   if (ws.joining) return;
   ws.joining = true;
   let acc = null, save = m.save;
+  const spec = m.spec === true;
   if (m.token !== undefined && m.token !== null && m.token !== '') {
     if (!accounts) { sendWs(ws, { t: 'authfail' }); ws.joining = false; return; }
     try { acc = await accounts.auth(m.token); } catch (e) { sendWs(ws, { t: 'authfail', retry: true }); ws.joining = false; return; }
     if (!acc) { sendWs(ws, { t: 'authfail' }); ws.joining = false; return; }
+    if (spec) { doSpec(ws, m, acc); return; } // espectador não ocupa a conta: dá para assistir e jogar com o mesmo e-mail
     const old = online.get(acc.id);
     online.set(acc.id, ws);
     if (old && old !== ws) kick(old, 'Sua conta entrou em outro lugar.');
@@ -1328,15 +1388,41 @@ async function startJoin(ws, m) {
     if (stored) save = stored;
     else if (!accounts.allowImport) save = null; // conta nova só importa o progresso do navegador se o servidor deixar
   }
+  if (spec) { doSpec(ws, m, null); return; }
   if (ws.readyState !== 1) { if (acc && online.get(acc.id) === ws) online.delete(acc.id); ws.joining = false; return; }
   doJoin(ws, m, acc, save);
+}
+// Entrada como espectador: câmera livre, invisível, sem combate. Vai para a sala mais cheia do modo escolhido.
+function specInit(p) {
+  const room = p.room;
+  send(p, {
+    t: 'init', id: p.id, room: room.id, mode: room.mode, best: room.best, maxPlayers: D.MAX_PLAYERS, acct: p.acct ? p.acct.email : null, spec: true, admin: !!p.admin,
+    roster: [...room.players.values()].map((q) => ({ id: q.id, name: q.name, color: q.color, sk: q.sk || 0 })).concat([{ id: p.id, name: p.name, color: p.color, sk: 0 }])
+  });
+  send(p, meMsg(p));
+  send(p, lbMsg(room));
+  send(p, kcMsg(room));
+}
+function doSpec(ws, m, acc) {
+  if (ws.readyState !== 1) { ws.joining = false; return; }
+  const mode = typeof m.mode === 'string' && Object.prototype.hasOwnProperty.call(D.MODES, m.mode) ? m.mode : 'classic';
+  const cand = rooms.filter((r) => r.mode === mode && r.specs.size < MAX_SPECS).sort((a, b) => b.players.size - a.players.size);
+  const room = cand[0] || newRoom(mode);
+  const name = String(m.name || '').replace(/[^\p{L}\p{N} _.\-]/gu, '').trim().slice(0, 14) || 'Espectador';
+  const p = makePlayer(ws, name, '#9aa7b4', null, mode);
+  p.spec = true; p.isPlayer = false; p.alive = true; p.spd = BASE_SPEED * 2; p.x = W.cx; p.y = W.cy; p.r = 12;
+  p.admin = isAdminAcc(acc);
+  if (acc) p.acct = { id: acc.id, email: acc.email };
+  ws.p = p; p.room = room;
+  room.specs.set(p.id, p);
+  specInit(p);
 }
 function doJoin(ws, m, acc, save) {
   const name = String(m.name || '').replace(/[^\p{L}\p{N} _.\-]/gu, '').trim().slice(0, 14) || 'Slime';
   const color = typeof m.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(m.color) ? m.color : '#5fd35f';
   const mode = typeof m.mode === 'string' && Object.prototype.hasOwnProperty.call(D.MODES, m.mode) ? m.mode : 'classic';
   const room = rooms.find((r) => r.mode === mode && r.players.size < D.MAX_PLAYERS) || newRoom(mode);
-  const p = makePlayer(ws, name, color, save);
+  const p = makePlayer(ws, name, color, save, mode);
   if (acc) { p.acct = { id: acc.id, email: acc.email }; if (ranking) ranking.touch(acc.id, name); p.sk = D.skinCode(accounts.skinsOf(acc).eq); }
   ws.p = p; p.room = room;
   room.players.set(p.id, p);
@@ -1348,6 +1434,7 @@ function doJoin(ws, m, acc, save) {
   if (acc) send(p, skinsMsg(accounts.skinsOf(acc)));
   send(p, meMsg(p));
   send(p, lbMsg(room));
+  if (room.kc) send(p, kcMsg(room));
   bcast(room, { t: 'pj', id: p.id, name: p.name, color: p.color, sk: p.sk || 0 }, p);
   checkQuests(room, p);
   p.saveDirty = true;
@@ -1363,7 +1450,30 @@ function onMessage(ws, raw) {
   const p = ws.p;
   if (m.t === 'join') { if (!p) startJoin(ws, m); return; }
   if (!p) return;
+  if (p.spec && m.t !== 'in' && m.t !== 'kc' && m.t !== 'nextroom') return; // espectador só anda, troca de sala e (administrador) liga o contador
   switch (m.t) {
+    case 'kc': { // administrador liga/desliga (ou zera) o contador de abates da sala
+      if (!p.spec || !p.admin) break;
+      const room = p.room;
+      if (m.on === false) { room.kc = null; feed(room, 'Contador de abates desligado'); }
+      else if (!room.kc || m.reset === true) { room.kc = { rows: new Map(), recent: new Map(), dirty: false }; feed(room, 'Contador de abates ligado: vale quem joga com conta'); }
+      bcast(room, kcMsg(room));
+      break;
+    }
+    case 'nextroom': {
+      if (!p.spec) break;
+      const list = rooms.filter((r) => r.mode === p.room.mode);
+      const to = list[(list.indexOf(p.room) + 1) % list.length];
+      if (!to || to === p.room) { send(p, { t: 'toast', m: 'Só existe uma sala neste modo agora.' }); break; }
+      if (to.specs.size >= MAX_SPECS) { send(p, { t: 'toast', m: 'Essa sala está cheia de espectadores.' }); break; }
+      const from = p.room;
+      from.specs.delete(p.id);
+      if (!from.players.size && !from.specs.size) { const i = rooms.indexOf(from); if (i >= 0) rooms.splice(i, 1); }
+      p.room = to; p.x = W.cx; p.y = W.cy; p.inQ.length = 0; p.ack = 0; p.mx = p.my = 0;
+      to.specs.set(p.id, p);
+      specInit(p);
+      break;
+    }
     case 'in': {
       let mx = Number(m.mx) || 0, my = Number(m.my) || 0;
       const l = Math.hypot(mx, my);
@@ -1428,6 +1538,12 @@ function leave(ws) {
   const p = ws.p;
   if (!p || p.gone) { if (!p) ws.joining = false; return; }
   p.gone = true;
+  if (p.spec) {
+    const room = p.room;
+    room.specs.delete(p.id);
+    if (!room.players.size && !room.specs.size) { const i = rooms.indexOf(room); if (i >= 0) rooms.splice(i, 1); }
+    return;
+  }
   if (p.acct && accounts) {
     accounts.saveProgress(p.acct.id, saveMsg(p).d);
     if (ranking) ranking.flush(p.acct.id).catch(() => {});
@@ -1437,7 +1553,7 @@ function leave(ws) {
   const room = p.room;
   room.players.delete(p.id);
   bcast(room, { t: 'pl', id: p.id });
-  if (!room.players.size) { const i = rooms.indexOf(room); if (i >= 0) rooms.splice(i, 1); }
+  if (!room.players.size && !room.specs.size) { const i = rooms.indexOf(room); if (i >= 0) rooms.splice(i, 1); }
 }
 
 if (!SIM) {
@@ -1461,4 +1577,4 @@ if (!SIM) {
 }
 
 // exportados para test/sim.js e para o simulador (tools/simular.js)
-module.exports = { bossCdMul, server, wss, rooms, online, getAccounts: () => accounts, getRanking: () => ranking, fmtDur, recalc, addXp, fx, ev, newRoom, makePlayer, spawnPlayer, updateRoom, hit, giveRandom, checkQuests, DT, TICK, BASE_SPEED };
+module.exports = { killPlayer, saveMsg, bossCdMul, server, wss, rooms, online, getAccounts: () => accounts, getRanking: () => ranking, fmtDur, recalc, addXp, fx, ev, newRoom, makePlayer, spawnPlayer, updateRoom, hit, giveRandom, checkQuests, DT, TICK, BASE_SPEED };

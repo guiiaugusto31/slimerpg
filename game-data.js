@@ -1,7 +1,7 @@
 'use strict';
 // Dados e regras do jogo, compartilhados entre servidor e cliente (o cliente recebe via /data.json).
 
-const MAX_PLAYERS = 20;
+const MAX_PLAYERS = 30;
 const MAX_LEVEL = 20;
 
 // Mapa elíptico. Dobrado em largura e altura (era 3600 x 2250).

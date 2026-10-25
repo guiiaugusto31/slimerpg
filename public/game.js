@@ -66,7 +66,8 @@
     ['colH', 'colS', 'colL'].forEach(function (id) { $(id).addEventListener('input', fromSliders); });
     $('colorBtn').addEventListener('click', function () { colorPanel($('colorPanel').hidden); });
     $('colorOk').addEventListener('click', function () { colorPanel(false); });
-    $('playBtn').addEventListener('click', play);
+    $('playBtn').addEventListener('click', function () { play(false); });
+    $('specBtn').addEventListener('click', function () { play(true); });
     $('nameIn').addEventListener('keydown', function (e) { if (e.key === 'Enter') play(); });
     var sv = store.get('slimeio_save', null);
     if (sv && sv.items && !hasAccount()) { // com conta, quem escreve esta linha é conta.js
@@ -112,10 +113,23 @@
   }
   Array.prototype.forEach.call(document.querySelectorAll('#modes button'), function (b) { b.addEventListener('click', function () { setMode(b.dataset.mode); }); });
   setMode(store.get('slimeio_mode', 'classic'));
-  function play() {
+  // quantos jogadores há em cada modo, na tela inicial (atualiza a cada 8 s enquanto ela estiver aberta)
+  function showCounts() {
+    if ($('title').hidden) return;
+    fetch('/status').then(function (r) { return r.json(); }).then(function (st) {
+      Array.prototype.forEach.call(document.querySelectorAll('#modes button'), function (b) {
+        var n = st.modes && st.modes[b.dataset.mode] | 0, sp = b.querySelector('small');
+        if (!sp) { sp = document.createElement('small'); b.appendChild(sp); }
+        sp.textContent = n + (n === 1 ? ' jogador' : ' jogadores');
+      });
+    }).catch(function () { /* servidor dormindo ou sem rede: some o contador */ });
+  }
+  showCounts(); setInterval(showCounts, 8000);
+  function play(spec) {
+    S.wantSpec = !!spec;
     var name = $('nameIn').value.trim() || 'Slime';
     cfg.name = name; store.set('slimeio_name', name); store.set('slimeio_color', cfg.color);
-    $('playBtn').disabled = true; $('status').textContent = 'Conectando…';
+    $('playBtn').disabled = true; $('specBtn').disabled = true; $('status').textContent = 'Conectando…';
     S.failed = false; S.kicked = null;
     connect();
   }
@@ -127,6 +141,7 @@
     ws = new WebSocket(proto + '://' + location.host);
     ws.onopen = function () {
       var j = { t: 'join', name: cfg.name, color: cfg.color, mode: cfg.mode, save: store.get('slimeio_save', null) };
+      if (S.wantSpec) j.spec = true;
       if (hasAccount()) j.token = Conta.token(); // com conta, o servidor carrega o progresso dela
       ws.send(JSON.stringify(j));
     };
@@ -155,6 +170,8 @@
       case 'init':
         S.id = m.id; S.joined = true; S.joinAt = Date.now(); SND.enter(); S.mode = m.mode || 'classic'; S.best = m.best || [];
         updateModeChip();
+        S.spec = !!m.spec; document.body.classList.toggle('spec', S.spec);
+        if (S.spec) { S.players.clear(); S.roster = {}; S.mobs.clear && S.mobs.clear(); $('specBar').hidden = false; $('specTag').textContent = 'Espectador · sala ' + m.room; $('kcBtn').hidden = $('kcReset').hidden = !m.admin; S.isAdmin = !!m.admin; }
         m.roster.forEach(function (r) { S.roster[r.id] = r; });
         $('title').hidden = true; $('hud').hidden = false;
         $('hName').textContent = cfg.name;
@@ -180,6 +197,7 @@
       case 'pl': delete S.roster[m.id]; break;
       case 's': onSnap(m); break;
       case 'me': onMe(m); break;
+      case 'kc': renderKc(m); break;
       case 'lb': S.lb = m.l; if (m.md) S.mode = m.md; renderLb(); break;
       case 'best': S.best = m.best || []; updateModeChip(); break;
       case 'feed': addFeed(m.m); if (/despertou o/.test(m.m)) SND.stinger(); break;
@@ -351,6 +369,21 @@
     }
   }
 
+  // contador de abates da sala (ligado pelo administrador): fica na tela de quem joga e de quem assiste
+  function renderKc(m) {
+    S.kcOn = !!m.on;
+    var el = $('kc');
+    el.hidden = !m.on;
+    if (S.isAdmin) $('kcBtn').textContent = m.on ? 'Desligar contador de abates' : 'Ligar contador de abates';
+    if (!m.on) return;
+    var h = '<h3>Abates da sala</h3>';
+    if (!m.l.length) h += '<p class="muted">Ninguém abateu ainda.</p>';
+    else { h += '<ol>'; m.l.forEach(function (r, i) { h += '<li><span class="n">' + (i + 1) + '. ' + escapeHtml(r[0]) + '</span><span class="l">' + r[1] + '</span></li>'; }); h += '</ol>'; }
+    el.innerHTML = h;
+  }
+  $('kcBtn').addEventListener('click', function () { send({ t: 'kc', on: !S.kcOn }); });
+  $('kcReset').addEventListener('click', function () { if (confirm('Zerar a contagem de abates?')) send({ t: 'kc', on: true, reset: true }); });
+  $('roomBtn').addEventListener('click', function () { send({ t: 'nextroom' }); });
   function onMe(m) {
     var prev = S.me, changed = true;
     if (prev) changed = JSON.stringify([prev.inv, prev.eq, prev.act, prev.stats, prev.fu]) !== JSON.stringify([m.inv, m.eq, m.act, m.stats, m.fu]);
@@ -1075,6 +1108,7 @@
 
   function drawPlayer(g, e) {
     var me = e.id === S.id, x = me ? S.pos.x : e.rx, y = me ? S.pos.y : e.ry, r = e.rr;
+    if (me && S.spec) return; // espectador não se desenha: câmera livre e invisível
     var ro = S.roster[e.id] || { name: 'Slime', color: '#5fd35f' };
     var o = slimeAnim(e, r) || {}, tt = T + e.id;
     o.cloth = e.ar || 'vital_0'; // a roupa equipada aparece no corpo

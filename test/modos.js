@@ -35,7 +35,7 @@ const roomOf = (c) => S.rooms.find((r) => r.players.has(c.id));
   // XP por modo: o mesmo cogumelo
   const xpOf = async (cl, k) => {
     const r = roomOf(cl), p = r.players.get(cl.id);
-    p.level = 1; p.xp = 0; p.protectUntil = 0; p.x = 4000; p.y = 4000;
+    p.level = 10; p.xp = 0; p.protectUntil = 0; p.x = 4000; p.y = 4000; // nível alto: o XP de um cogumelo não faz subir de nível, então o total é o XP concedido
     const m = r.mobs.find((x) => x.key === 'cogumelo' && x.alive) || r.mobs.find((x) => x.key === 'cogumelo');
     m.alive = true; m.hp = 1; m.x = 4010; m.y = 4000;
     let got = 0; const old = S.addXp; // mede o XP concedido pelo abate
@@ -45,8 +45,9 @@ const roomOf = (c) => S.rooms.find((r) => r.players.has(c.id));
   };
   const cog = D.MOBS.cogumelo.xp;
   const xc = await xpOf(a, 'classic'), xp = await xpOf(c, 'pvp'), xo = await xpOf(b, 'coop');
-  ok(xc > 0 && xp >= xc * 2, 'pvp: monstro dá bem mais XP (clássico ' + xc + ', pvp ' + xp + ')');
-  ok(xo >= xc, 'coop: XP maior ou igual (coop ' + xo + ')');
+  ok(xc === Math.round(cog * 1.5), 'clássico: monstro dá 1,5x de XP (' + cog + ' base, ' + xc + ' recebido)');
+  ok(xp === cog * 3, 'pvp: monstro dá 3x de XP (' + xp + ')');
+  ok(xo === xc, 'coop: mesmo XP do clássico, 1,5x (' + xo + ')');
 
   // pvp: contador de abates
   const rc = roomOf(c), pc = rc.players.get(c.id);
@@ -62,6 +63,16 @@ const roomOf = (c) => S.rooms.find((r) => r.players.has(c.id));
   S.hit(rb, pb, boss, 10, 'phys'); await sleep(100);
   ok(rb.best.length === 1 && rb.best[0].t >= 40 && rb.best[0].t <= 45, 'coop: tempo do dragão registrado (' + (rb.best[0] && rb.best[0].t) + ' s)');
   ok(b.feed.some((t) => /Tempo para derrubar o dragão/.test(t)), 'coop: a sala é avisada do tempo');
+  // PvP não leva nem guarda as armas dos outros modos: só as armas míticas do dragão
+  const sv = { items: ['espada_3', 'espada_6', 'martelo_2', 'draco_6'], equip: { w: ['espada_6', 'espada_3'], a: 'vital_0' }, kills: { lobo: 5 }, pk: 2, done: ['q_sinos'] };
+  const pp = S.makePlayer({}, 'P', '#ffffff', sv, 'pvp'), pcl = S.makePlayer({}, 'Q', '#ffffff', sv, 'classic');
+  ok(pp.inv.length === 1 && pp.inv[0] === 'espada_6' && pp.equip.w[0] === 'espada_6' && pp.equip.w[1] !== 'espada_3', 'pvp: entra só com a arma mítica do save (' + pp.inv.join(',') + ')');
+  ok(Object.keys(pp.kills).length === 0 && pp.pk === 0 && pp.done.size === 0, 'pvp: sem abates nem missões dos outros modos');
+  ok(pcl.inv.includes('espada_3') && pcl.inv.includes('martelo_2') && pcl.kills.lobo === 5, 'clássico: o save inteiro continua valendo');
+  pp.inv.push('martelo_3', 'arco_6'); pp.kills.cogumelo = 9; // achou um item comum e ganhou uma mítica do dragão no PvP
+  const out = S.saveMsg(pp).d;
+  ok(out.items.includes('arco_6') && !out.items.includes('martelo_3'), 'pvp: só a arma mítica nova entra no save, a comum não');
+  ok(['espada_3', 'espada_6', 'martelo_2', 'draco_6'].every((id) => out.items.includes(id)) && out.kills.lobo === 5 && !out.kills.cogumelo && out.done.includes('q_sinos') && out.pk === 2, 'pvp: o resto do save (outros modos) fica como estava');
   console.log(fails ? fails + ' falha(s)' : 'tudo certo');
   process.exit(fails ? 1 : 0);
 })();

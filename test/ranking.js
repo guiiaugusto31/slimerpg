@@ -35,8 +35,8 @@ async function unit(label, makeStore, reopen) {
   ok(rk.pvpKill(b, 'a' + a) === true, 'um abate de jogador conta');
   ok(rk.pvpKill(b, 'a' + a) === false, 'matar a mesma vítima de novo logo em seguida não conta');
   ok(rk.pvpKill(b, 'a' + c) === true && rk.pvpKill(b, 'gdudu') === true, 'vítimas diferentes (conta ou visitante) contam');
-  t += R.REPEAT_MS - 1; ok(rk.pvpKill(b, 'a' + a) === false, 'ainda dentro dos 5 minutos');
-  t += 2; ok(rk.pvpKill(b, 'a' + a) === true, 'passados os 5 minutos conta de novo');
+  t += R.REPEAT_MS - 1; ok(rk.pvpKill(b, 'a' + a) === false, 'ainda dentro dos 5 segundos');
+  t += 2; ok(rk.pvpKill(b, 'a' + a) === true, 'passados os 5 segundos conta de novo');
   rk.pvpKill(a, 'a' + b);
   rk.pvpKill(c, 'a' + b); rk.pvpKill(c, 'a' + a); // Caio caça, mas nunca chegou ao nível 20
   bd = rk.boards(null);

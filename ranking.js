@@ -13,7 +13,7 @@
 //   wins: vezes que derrotou o dragão | dragon: { play, fight, at } da 1ª vitória (play = tempo de jogo na hora, fight = duração da luta) ou null
 
 const MAX_ROWS = 50;               // linhas de cada ranking na tela
-const REPEAT_MS = 5 * 60000;       // matar a mesma vítima de novo dentro deste prazo não soma (evita farmar uma segunda conta)
+const REPEAT_MS = 5 * 1000;         // matar a mesma vítima de novo dentro deste prazo não soma (evita farmar uma segunda conta)
 
 function num(v, max) { v = Number(v); return v > 0 && isFinite(v) ? Math.min(max, v) : 0; }
 const DAY = 86400000;
