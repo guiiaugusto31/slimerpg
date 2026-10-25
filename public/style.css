@@ -490,3 +490,31 @@ body.spec #stats, body.spec #slots, body.spec #btnAttr, body.spec #btnInv, body.
 #specBar button { font: 700 13px var(--font-head); background: linear-gradient(180deg, var(--bark-hi), var(--bark)); border: 1px solid var(--edge); border-radius: 8px; color: inherit; cursor: pointer; }
 #specBar button:hover { border-color: var(--lichen); }
 .modes button small { display: block; margin-top: 2px; font: 400 11px var(--font-ui); opacity: .75; }
+
+/* Mochila: cabeçalho e equipamentos fixos no topo, detalhes fixos embaixo, só a lista de itens rola no meio */
+#invPanel:not([hidden]) { display: flex; flex-direction: column; overflow: hidden; }
+#invPanel > * { flex: none; }
+#invPanel .catalog { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; margin-top: 8px; padding-right: 2px; }
+#invPanel .detail { position: static; margin-top: 8px; max-height: 36vh; box-shadow: 0 -6px 14px rgba(0, 0, 0, .35); }
+@media (max-height: 640px) {
+  #invPanel { padding-top: 8px; padding-bottom: 8px; }
+  #invPanel h2 { font-size: 20px; }
+  #invPanel .equipped { margin-top: 6px; gap: 6px; }
+  #invPanel .equipped .eq img { width: 38px; height: 38px; }
+  #invPanel .tabs { margin-top: 8px; }
+  #invPanel .detail { max-height: 30vh; }
+  #invPanel .hint { display: none; }
+}
+@media (max-height: 520px) {
+  #invPanel { padding-top: 6px; padding-bottom: 6px; }
+  #invPanel header .x { width: 34px; height: 34px; }
+  #invPanel .equipped { margin-top: 4px; gap: 4px; }
+  #invPanel .equipped .eq { padding: 3px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  #invPanel .equipped .eq small { display: none; }
+  #invPanel .equipped .eq img { width: 30px; height: 30px; }
+  #invPanel .equipped .eq .nm { font-size: 11px; text-align: left; }
+  #invPanel .starter { display: none; }
+  #invPanel .tabs { margin-top: 5px; gap: 4px; }
+  #invPanel .tabs [data-tab] { padding: 4px 9px; }
+  #invPanel .detail { max-height: 22vh; padding: 6px 9px; margin-top: 5px; }
+}

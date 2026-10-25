@@ -443,11 +443,7 @@
   zone.addEventListener('pointermove', function (e) {
     if (!stick.on || e.pointerId !== stick.id) return;
     var dx = e.clientX - stick.ox, dy = e.clientY - stick.oy, l = Math.hypot(dx, dy), R = 56;
-    if (l > R) { // analógico flexível: se o dedo passar do limite, a base acompanha o dedo
-      var ex = dx / l * (l - R), ey = dy / l * (l - R);
-      stick.ox += ex; stick.oy += ey; dx = dx / l * R; dy = dy / l * R;
-      var rr = zone.getBoundingClientRect(); base.style.left = (stick.ox - rr.left) + 'px'; base.style.top = (stick.oy - rr.top) + 'px';
-    }
+    if (l > R) { dx = dx / l * R; dy = dy / l * R; } // a base fica parada onde o dedo tocou; passou do limite, só a bolinha trava na borda
     stick.x = dx / R; stick.y = dy / R;
     knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
   });
@@ -1317,6 +1313,7 @@
       g.strokeStyle = st === 3 ? '#555' : '#fff3c4'; g.lineWidth = 1; g.stroke();
     }
     S.players.forEach(function (e) {
+      if (e.id !== S.id && !S.spec) return; // as bolinhas dos outros jogadores no minimapa só aparecem para o espectador
       var me = e.id === S.id, x = (me ? S.pos.x : e.rx) / W.w * w, y = (me ? S.pos.y : e.ry) / W.h * h;
       g.fillStyle = me ? '#b5d18a' : (e.f & 8) ? '#ffb347' : '#e0574a'; g.beginPath(); g.arc(x, y, me ? 3.2 : (e.f & 8) ? 3.2 : 2.4, 0, TAU); g.fill();
       if (me) { g.strokeStyle = '#fff'; g.lineWidth = 1; g.stroke(); }
