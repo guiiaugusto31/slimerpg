@@ -27,7 +27,7 @@
 <main id="title">
   <section class="title-card">
     <h1>Slime<span>RPG</span></h1>
-    <p class="tag">Uma floresta, vinte slimes, nenhuma trégua. Mate monstros, suba até o nível 20 e use a coroa.</p>
+    <p class="tag">Uma floresta, trinta slimes, nenhuma trégua. Mate monstros, suba até o nível 20 e use a coroa.</p>
     <canvas id="preview" width="260" height="190" aria-label="Pré-visualização do seu slime"></canvas>
     <label class="field" for="nameIn">Nome do slime</label>
     <input id="nameIn" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Como te chamam na floresta?">
@@ -63,6 +63,7 @@
     </div>
     <p class="mode-desc" id="modeDesc"></p>
     <button id="playBtn" class="primary">Entrar na floresta</button>
+    <button type="button" id="specBtn" class="acct-open rank-open" title="Câmera livre: você anda pelo mapa sem ser visto e sem lutar">Assistir como espectador</button>
     <p id="saveInfo" class="muted"></p>
     <p id="status" class="status" role="status"></p>
     <button type="button" id="rankOpenTitle" class="acct-open rank-open">Rankings</button>
@@ -94,6 +95,8 @@
   </section>
 
   <section id="lb" class="panel" aria-label="Ranking da sala"></section>
+  <section id="kc" class="panel" aria-label="Contador de abates" hidden></section>
+  <div id="specBar" hidden><b id="specTag">Espectador</b><button type="button" id="kcBtn" hidden>Ligar contador de abates</button><button type="button" id="kcReset" hidden>Zerar</button><button type="button" id="roomBtn">Próxima sala</button></div>
   <div id="feed" aria-live="polite"></div>
   <div id="toast" role="status"></div>
   <canvas id="mini" width="156" height="98"></canvas>

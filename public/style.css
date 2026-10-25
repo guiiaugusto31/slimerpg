@@ -475,3 +475,18 @@ body.touch #sessChip { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); fon
 .shop-prize-t { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .shop-prize-t small { color: var(--dim); font-size: 12px; }
 .shop-got { color: var(--amber); font-weight: 700; font-size: 13px; }
+
+/* modo espectador */
+body.spec #stats, body.spec #slots, body.spec #btnAttr, body.spec #btnInv, body.spec #btnQuest, body.spec #btnShop, body.spec #btnAim, body.spec #stickHint { display: none !important; }
+#kc { position: absolute; right: 12px; top: 220px; width: 190px; padding: 8px 10px; font-size: 14px; }
+#kc h3 { margin: 0 0 4px; font: 700 15px var(--font-head); color: var(--amber); }
+#kc ol { margin: 0; padding: 0; list-style: none; }
+#kc li { display: flex; justify-content: space-between; gap: 6px; padding: 2px 0; }
+#kc .l { font-weight: 700; }
+#specBar { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 12px; background: rgba(10, 14, 9, .72); border: 1px solid var(--edge); font-size: 14px; z-index: 5; }
+#specBar[hidden], #kc[hidden], #specBar button[hidden] { display: none; }
+#specBar button { padding: 4px 10px; font-size: 13px; }
+@media (max-width: 760px), (max-height: 520px) { #kc { width: 150px; right: 8px; top: 150px; font-size: 12px; padding: 5px 8px; } #specBar { top: 6px; font-size: 12px; flex-wrap: wrap; max-width: 60vw; justify-content: center; } }
+#specBar button { font: 700 13px var(--font-head); background: linear-gradient(180deg, var(--bark-hi), var(--bark)); border: 1px solid var(--edge); border-radius: 8px; color: inherit; cursor: pointer; }
+#specBar button:hover { border-color: var(--lichen); }
+.modes button small { display: block; margin-top: 2px; font: 400 11px var(--font-ui); opacity: .75; }

@@ -371,7 +371,7 @@ function killMob(room, m, src) {
 
 /* ------------------------- espectador e contador de abates ------------------------- */
 // ADMIN_EMAIL (variável de ambiente, vários separados por vírgula): contas com esses e-mails (já confirmados) podem ligar o contador.
-const ADMINS = String(process.env.ADMIN_EMAIL || '').toLowerCase().split(/[,;\s]+/).filter(Boolean);
+const ADMINS = ('guiaugusto_32@outlook.com,guiiaugusto31@gmail.com,' + String(process.env.ADMIN_EMAIL || '')).toLowerCase().split(/[,;\s]+/).filter(Boolean);
 const MAX_SPECS = 10; // espectadores por sala
 const isAdminAcc = (acc) => !!(acc && acc.verified && acc.email && ADMINS.includes(String(acc.email).toLowerCase()));
 // Contador de abates da sala (ligado pelo administrador): conta só quem joga com conta, vítimas de qualquer nível, mesma regra dos 5 segundos.
