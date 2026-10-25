@@ -1247,23 +1247,37 @@ function killBoss(room, m) {
   m.dmgBy.clear(); m.threat.clear();
 }
 
+// Empurra monstros que se sobrepõem. Usa uma grade (só compara vizinhos) em vez de comparar todos com todos: com 1100+ monstros isso pesava no servidor grátis.
 function separateMobs(room) {
   const ms = room.mobs;
+  const CELL = 120, grid = new Map();
+  const push2 = (a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y, min = (a.r + b.r) * 0.85;
+    if (Math.abs(dx) > min || Math.abs(dy) > min) return;
+    const d = Math.hypot(dx, dy) || 0.01;
+    if (d >= min) return;
+    const push = (min - d) * 0.5; // roda a cada 2 passos, então empurra o dobro
+    if (!a.boss) { const k = b.boss ? 4 : 1; a.x -= (dx / d) * push * k; a.y -= (dy / d) * push * k; }
+    if (!b.boss) { const k = a.boss ? 4 : 1; b.x += (dx / d) * push * k; b.y += (dy / d) * push * k; }
+  };
+  const bosses = [];
   for (let i = 0; i < ms.length; i++) {
     const a = ms[i];
     if (!a.alive) continue;
-    for (let j = i + 1; j < ms.length; j++) {
-      const b = ms[j];
-      if (!b.alive) continue;
-      const dx = b.x - a.x, dy = b.y - a.y, min = (a.r + b.r) * 0.85;
-      if (Math.abs(dx) > min || Math.abs(dy) > min) continue;
-      const d = Math.hypot(dx, dy) || 0.01;
-      if (d >= min) continue;
-      const push = (min - d) * 0.25;
-      if (!a.boss) { const k = b.boss ? 4 : 1; a.x -= (dx / d) * push * k; a.y -= (dy / d) * push * k; }
-      if (!b.boss) { const k = a.boss ? 4 : 1; b.x += (dx / d) * push * k; b.y += (dy / d) * push * k; }
+    if (a.boss || a.r * 1.7 > CELL) { bosses.push(a); continue; } // grandes (dragão): comparam com todos
+    const key = Math.floor(a.x / CELL) * 4096 + Math.floor(a.y / CELL);
+    const c = grid.get(key);
+    if (c) c.push(a); else grid.set(key, [a]);
+  }
+  for (const [key, cell] of grid) {
+    const cx = Math.floor(key / 4096), cy = key - cx * 4096;
+    for (let i = 0; i < cell.length; i++) for (let j = i + 1; j < cell.length; j++) push2(cell[i], cell[j]);
+    for (const [ox, oy] of [[1, 0], [1, 1], [0, 1], [-1, 1]]) { // metade dos vizinhos, para não repetir o par
+      const o = grid.get((cx + ox) * 4096 + cy + oy);
+      if (o) for (let i = 0; i < cell.length; i++) for (let j = 0; j < o.length; j++) push2(cell[i], o[j]);
     }
   }
+  for (const g of bosses) for (const o of ms) if (o !== g && o.alive) push2(g, o);
 }
 
 const near = (me, x, y) => Math.abs(x - me.x) < 1000 && Math.abs(y - me.y) < 650;
@@ -1327,7 +1341,7 @@ function updateRoom(room) {
   updateProjs(room);
   if (room.later.length) for (let i = room.later.length - 1; i >= 0; i--) { const l = room.later[i]; l.t -= DT; if (l.t <= 0) { room.later.splice(i, 1); try { l.fn(); } catch (e) { /* jogador saiu */ } } } // ações atrasadas das misturas
   for (const m of room.mobs) updateMob(room, m);
-  separateMobs(room);
+  if (room.t % 2 === 0) separateMobs(room);
   if (room.quiet) room.ev.length = 0; // simulador: ninguém olhando, não monta pacotes
   else {
     if (room.t % 2 === 0) sendSnapshots(room);
@@ -1526,13 +1540,27 @@ function onMessage(ws, raw) {
   }
 }
 
-wss.on('connection', (ws) => {
+// Proteção contra abuso: limite de conexões ao mesmo tempo e de conexões novas por minuto, por IP (o IP real vem do último valor de X-Forwarded-For, que o proxy da hospedagem acrescenta).
+const ipConns = new Map(), ipRecent = new Map();
+const MAX_CONN_IP = 12, MAX_NEW_PER_MIN = 40;
+const wsIp = (req) => { const xf = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean); return xf.length ? xf[xf.length - 1] : (req.socket.remoteAddress || '?'); };
+if (!SIM) setInterval(() => { ipRecent.clear(); }, 60000).unref();
+wss.on('connection', (ws, req) => {
+  const ip = wsIp(req);
+  if (/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(ip)) { ws.p = null; ws.rate = 0; ws.isAlive = true; return setupWs(ws); } // máquina local (testes, desenvolvimento): sem limite
+  const nowN = (ipRecent.get(ip) || 0) + 1; ipRecent.set(ip, nowN);
+  if ((ipConns.get(ip) || 0) >= MAX_CONN_IP || nowN > MAX_NEW_PER_MIN) { try { ws.close(1013, 'muitas conexões'); } catch (e) { /* já fechado */ } return; }
+  ipConns.set(ip, (ipConns.get(ip) || 0) + 1);
+  ws.once('close', () => { const n = (ipConns.get(ip) || 1) - 1; if (n <= 0) ipConns.delete(ip); else ipConns.set(ip, n); });
   ws.p = null; ws.rate = 0; ws.isAlive = true;
+  setupWs(ws);
+});
+function setupWs(ws) {
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('message', (raw) => onMessage(ws, raw.toString()));
   ws.on('error', () => {});
   ws.on('close', () => leave(ws));
-});
+}
 // Jogador saiu (fechou a aba, caiu a conexão ou foi tirado do jogo). Pode ser chamado mais de uma vez.
 function leave(ws) {
   const p = ws.p;
