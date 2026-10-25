@@ -13,6 +13,8 @@ Abra http://localhost:3000. Para testar com mais jogadores, abra várias abas ou
 
 Cada sala comporta 30 jogadores. Quando uma enche, o servidor abre outra automaticamente. Para mudar a porta: `PORT=8080 npm start`.
 
+No minimapa, só o **espectador** vê as bolinhas dos outros jogadores; quem joga vê só a própria.
+
 ## Versão de teste (sem instalar nada)
 
 `npm run preview` gera `preview/slime-io-teste.html`, um arquivo único com o jogo inteiro. É só abrir no navegador (no PC ou no celular). O servidor roda dentro da página e cinco slimes-robô entram na floresta com você (alguns partem para cima de quem chegar perto, já que o PvP está ligado). Serve para testar as regras e o visual; o multiplayer de verdade só existe com `npm start`.
