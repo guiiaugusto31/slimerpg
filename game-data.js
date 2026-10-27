@@ -163,8 +163,8 @@ const MOBS = {
   // Chefe: dorme no centro e só age depois de levar golpes. Sopro de fogo e pancada no chão têm aviso antes de sair.
   dragao: {
     name: 'Dragão ancestral', hp: 75000, dmg: 200, speed: 120, aggro: 0, r: 80, xp: 1200, tier: 6, atkCd: 1.7, boss: true,
-    breath: { dmg: 380, range: 420, width: 0.8, cd: 8, wind: 1.0 },
-    slam: { dmg: 300, radius: 200, cd: 11, wind: 1.1 },
+    breath: { dmg: 304, range: 420, width: 0.8, cd: 8, wind: 1.0 },
+    slam: { dmg: 240, radius: 200, cd: 11, wind: 1.1 },
     calm: 10,    // segundos sem apanhar até ele voltar para casa e dormir
     regen: 0.04  // fração da vida por segundo enquanto dorme (o dobro ao voltar para casa)
   }
@@ -221,6 +221,7 @@ const DROP_MAX_TIER_ARMOR = 5;   // peitorais: o lendário cai das aranhas-véu
 const ITEM_LIMIT = 1;      // no máximo 1 de cada item no inventário (o mesmo item pode ocupar os 2 slots de arma e fundir)
 const PLAYER_REGEN = 0.005;    // vida que o jogador recupera por segundo (fração da vida máxima), o tempo todo, mesmo levando dano
 const PLAYER_STUN_MULT = 0.5;  // atordoamento em jogadores dura esta fração do tempo que dura nos monstros
+const PVP_DAMAGE = 0.6; // dano entre jogadores: 60% do normal (nerf de 40%); contra monstros e dragão não muda
 const PVP_XP_FRAC = 0.4;   // XP por matar jogador = 40% de todo o XP que a vítima tinha (totalXp)
 const NEWBIE_LEVEL = 0;    // até este nível ninguém luta contra jogadores (nem bate, nem apanha). 0 = PvP ligado para todos, desde o nível 1
 const PK_MIN_LEVEL = 8;    // a missão 'derrotar jogadores' só conta vítimas deste nível para cima
@@ -368,13 +369,13 @@ function publicData() {
   return {
     MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS,
     ATTR_NAMES, FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, RES_PER_TIER, RES_CAP, QUESTS, POINTS_PER_LEVEL, ATTR_MAX,
-    ITEM_LIMIT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, SKIN_SLOTS, SKINS, SKIN_PACKS, WEEK_PRIZES, MODES
+    ITEM_LIMIT, PVP_XP_FRAC, PVP_DAMAGE, NEWBIE_LEVEL, PK_MIN_LEVEL, SKIN_SLOTS, SKINS, SKIN_PACKS, WEEK_PRIZES, MODES
   };
 }
 
 module.exports = {
   MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS, WAND_SPLIT, TRAIL_HEAL, ATTRS, ATTR_NAMES, POINTS_PER_LEVEL, LEVEL_DIE, MODES, ATTR_MAX,
   FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, QUESTS, MOB_COUNT, MOB_RESPAWN, DROP_WEAPON, DROP_ARMOR,
-  DROP_MAX_TIER, DROP_MAX_TIER_ARMOR, ITEM_LIMIT, PLAYER_REGEN, PLAYER_STUN_MULT, PVP_XP_FRAC, NEWBIE_LEVEL, PK_MIN_LEVEL, TUNE, ONEHIT_MAX_HITS, MIN_HITS, REF_ATTR, mobHpOfTier, hitCap, howToGet, mixName, mixCd, MIX_DMG, xpNeed, totalXp, attrOf, weaponDamage, skillDamage, armorStats, meetsReq, moveSpeed, MOVE_BASE, publicData,
+  DROP_MAX_TIER, DROP_MAX_TIER_ARMOR, ITEM_LIMIT, PLAYER_REGEN, PLAYER_STUN_MULT, PVP_XP_FRAC, PVP_DAMAGE, NEWBIE_LEVEL, PK_MIN_LEVEL, TUNE, ONEHIT_MAX_HITS, MIN_HITS, REF_ATTR, mobHpOfTier, hitCap, howToGet, mixName, mixCd, MIX_DMG, xpNeed, totalXp, attrOf, weaponDamage, skillDamage, armorStats, meetsReq, moveSpeed, MOVE_BASE, publicData,
   SKIN_SLOTS, SKINS, SKIN_PACKS, WEEK_PRIZES, skinEmpty, skinClean, skinCode, skinDecode
 };

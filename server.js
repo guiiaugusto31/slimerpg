@@ -88,7 +88,7 @@ const server = http.createServer((req, res) => {
   }
   if (url === '/api/ranking' && req.method === 'GET') return serveRanking(req, res);
   if (url === '/api/ranking/claim' && req.method === 'POST') return claimPrize(req, res);
-  if (url.startsWith('/api/') || url === '/admin/skin') { // contas por e-mail (accounts.js)
+  if (url.startsWith('/api/') || url === '/admin/skin' || url === '/admin/senha') { // contas por e-mail (accounts.js)
     if (accounts && accounts.handle(req, res, url)) return;
     res.writeHead(404, { 'Content-Type': 'application/json' });
     return res.end('{"error":"Contas desativadas neste servidor."}');
@@ -330,6 +330,7 @@ function hit(room, src, e, dmg, dtype) {
   if (e.isPlayer) {
     if (e.protectUntil > room.now) return false;
     if (src && src.isPlayer && !pvpOk(src, e)) return false; // proteção de novato
+    if (src && src.isPlayer && src !== e) dmg *= D.PVP_DAMAGE; // PvP com 40% a menos de dano
     const res = dtype === 'magic' ? e.armor.rm : e.armor.rp;
     dmg = Math.max(1, Math.round(dmg * (1 - res / 100)));
     e.nodT = 0;
@@ -443,6 +444,7 @@ function addXp(room, p, amount) {
     p.xp -= D.xpNeed(p.level);
     p.level++;
     ups++;
+    if (p.level === 5 || p.level === 10 || p.level === 20) console.log('[subida] ' + room.mode + ' | ' + (p.acct ? p.acct.email : 'sem conta') + ' | ' + p.name + ' | nível ' + p.level + ' em ' + Math.round(p.aliveT) + 's de vida'); // para medir quanto tempo a subida leva (aparece nos logs da hospedagem)
     for (const k of D.ATTRS) { // dados do nível: 1d3 em cada atributo (máximo ATTR_MAX)
       const g = Math.min(1 + Math.floor(Math.random() * D.LEVEL_DIE), D.ATTR_MAX - p.stats[k]);
       p.stats[k] += g; gain[k] += g;

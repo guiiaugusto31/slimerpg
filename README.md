@@ -298,6 +298,18 @@ Na tela inicial o jogador escolhe o modo (a escolha fica guardada no navegador).
 
 Os valores de XP ficam em `MODES` em `game-data.js`. Teste: `test/modos.js`.
 
+**Dano entre jogadores.** Todo dano de jogador contra jogador (armas e habilidades) é 40% menor (60% do normal), em qualquer modo. Contra monstros e o dragão não muda. O valor é `PVP_DAMAGE` em `game-data.js`.
+
+**Medida da subida.** Quando um jogador chega aos níveis 5, 10 e 20, o servidor escreve nos logs (Render → Logs) uma linha `[subida] modo | e-mail | nome | nível N em X s de vida`, para medir quanto tempo a subida leva de verdade.
+
+**Senha esquecida (sem e-mail no servidor).** Enquanto o servidor não enviar e-mail, o jogador toca em *Esqueci a senha* na tela de entrar e vê o contato do administrador. O administrador cria uma senha nova pelo terminal (PowerShell):
+
+```
+Invoke-RestMethod -Method Post -Uri https://SEU-SITE/admin/senha -Headers @{Authorization="Bearer SUA_ADMIN_TOKEN"} -ContentType "application/json" -Body '{"email":"jogador@exemplo.com"}'
+```
+
+A resposta traz a senha gerada (campo `senha`); passe para a pessoa. Para escolher a senha, acrescente `"password":"minhasenha123"` ao corpo. Quem estava logado com a senha antiga precisa entrar de novo. Para trocar a própria `ADMIN_TOKEN`, basta mudar o valor na Render (Environment) e salvar; não precisa de código.
+
 **Modo espectador e contador de abates (campeonatos).** Na tela inicial, o botão *Assistir como espectador* entra no modo escolhido com câmera livre: o espectador é invisível, não luta e não conta como jogador (até 10 por sala; vai para a sala mais cheia, e o botão *Próxima sala* troca de sala). Quem entra com a conta do **administrador** vê também o botão *Ligar contador de abates*: o painel *Abates da sala* aparece na tela de todos da sala e conta só quem joga **com conta**, vítimas de qualquer nível, com a regra de 5 segundos para a mesma vítima. *Zerar* recomeça a contagem e *Desligar* apaga o painel. Já vêm como administradores guiaugusto_32@outlook.com e guiiaugusto31@gmail.com; outros e-mails entram pela variável de ambiente `ADMIN_EMAIL` (na Render: Environment → `ADMIN_EMAIL` = seu e-mail; vários separados por vírgula). A conta precisa existir e estar confirmada; crie a sua conta antes, para ninguém registrar esse e-mail primeiro.
 
 **Rankings por modo** (só para quem joga com conta). O painel Rankings tem 3 abas, uma por modo: *Clássico* (dois rankings: *Abates* de quem chegou ao nível 20 e *Dragão*, o menor tempo de jogo até a 1ª vitória), *PvP* (abates de qualquer nível; a mesma vítima só conta de novo depois de 5 segundos) e *PvE* (modo Cooperativo: menor tempo de luta, em minutos, da 1ª pancada até o dragão cair; vale o melhor tempo de cada conta). Cada abate e cada vitória só conta no ranking do modo em que aconteceu.
