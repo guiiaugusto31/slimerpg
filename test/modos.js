@@ -31,6 +31,14 @@ const roomOf = (c) => S.rooms.find((r) => r.players.has(c.id));
   const ra = roomOf(a), pa = ra.players.get(a.id), pe = ra.players.get(e.id);
   pa.protectUntil = pe.protectUntil = 0; pe.hp = pe.maxHp; const h1 = pe.hp; S.hit(ra, pa, pe, 5, 'phys');
   ok(pe.hp < h1, 'clássico: PvP continua ligado');
+  { // nerf: dano entre jogadores é 60% do normal; contra monstros não muda
+    pe.hp = pe.maxHp = 5000; pe.protectUntil = pa.protectUntil = 0; const rp = pe.armor.rp;
+    const before = pe.hp; S.hit(ra, pa, pe, 1000, 'phys');
+    const exp = Math.max(1, Math.round(1000 * D.PVP_DAMAGE * (1 - rp / 100)));
+    ok(D.PVP_DAMAGE === 0.6 && before - pe.hp === exp, 'PvP: dano entre jogadores 40% menor (' + (before - pe.hp) + ' = ' + exp + ')');
+    const mob = ra.mobs.find((x) => x.alive && !x.boss); const mh = mob.maxHp = mob.hp = 5000; S.hit(ra, pa, mob, 1000, 'phys');
+    ok(mh - mob.hp === 1000, 'contra monstros o dano continua inteiro');
+  }
 
   // XP por modo: o mesmo cogumelo
   const xpOf = async (cl, k) => {

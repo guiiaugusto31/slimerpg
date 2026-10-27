@@ -81,6 +81,7 @@ Sobre o PvP: já nas rodadas antigas da sala cheia (20 robôs) ele era brutal no
 
 - Vida 30 000 → 75 000.
 - Garra 160 → 200, sopro 280 → 380, pancada no chão 220 → 300.
+- Depois: sopro 380 → 304 e pancada no chão 300 → 240 (−20%). A garra continua em 200.
 - A vida cresce 20% por jogador extra que o esteja machucando, até 12 jogadores (`BOSS.scale`, `BOSS.scaleCap`), e volta ao normal quando ele dorme.
 
 **Resultado** (vitórias em 12 lutas, desviando 100%; a faixa vai de desviar 50% a 100%):

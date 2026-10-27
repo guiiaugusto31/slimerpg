@@ -264,14 +264,19 @@ function create(opts) {
   });
   // Libera skins para uma conta (prêmios do ranking). Devolve a lista de skins que ela passou a ter.
   const grantSkins = async (accId, ids) => { const next = await setSkins(accId, (sk) => { sk.own = [...new Set(sk.own.concat(ids.filter((id) => D.SKINS[id])))]; return sk; }); return next ? next.own : null; };
-  async function adminSkin(req, res, ip) {
-    if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 16) return fail(res, 503, 'Liberação desativada: defina ADMIN_TOKEN (16+ caracteres) no servidor.');
+  // Confere a senha de administrador (ADMIN_TOKEN) e devolve o corpo do pedido; se recusar, já responde e devolve null.
+  async function adminGate(req, res, ip) {
+    if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 16) { fail(res, 503, 'Liberação desativada: defina ADMIN_TOKEN (16+ caracteres) no servidor.'); return null; }
     const h = hits.get('adm:' + ip);
-    if (h && h.reset > Date.now() && h.n >= L.admin[0]) return fail(res, 429, 'Muitas tentativas. Tente de novo mais tarde.');
+    if (h && h.reset > Date.now() && h.n >= L.admin[0]) { fail(res, 429, 'Muitas tentativas. Tente de novo mais tarde.'); return null; }
     const m = /^Bearer (.{1,256})$/.exec(req.headers.authorization || '');
     const a = crypto.createHash('sha256').update(m ? m[1] : '').digest(), b = crypto.createHash('sha256').update(ADMIN_TOKEN).digest();
-    if (!m || !crypto.timingSafeEqual(a, b)) { limit('adm:' + ip, L.admin); return fail(res, 401, 'Não autorizado.'); }
-    let body; try { body = await readJson(req); } catch (e) { return fail(res, 400, 'Pedido inválido.'); }
+    if (!m || !crypto.timingSafeEqual(a, b)) { limit('adm:' + ip, L.admin); fail(res, 401, 'Não autorizado.'); return null; }
+    try { return await readJson(req); } catch (e) { fail(res, 400, 'Pedido inválido.'); return null; }
+  }
+  async function adminSkin(req, res, ip) {
+    const body = await adminGate(req, res, ip);
+    if (!body) return;
     const email = normEmail(body.email), pack = D.SKIN_PACKS[body.pack];
     if (!EMAIL_RE.test(email)) return fail(res, 400, 'E-mail inválido.');
     if (!pack) return fail(res, 400, 'Pacote inválido. Use: ' + Object.keys(D.SKIN_PACKS).join(', ') + '.');
@@ -281,6 +286,24 @@ function create(opts) {
     const remover = body.remover === true;
     const next = await setSkins(acc.id, (sk) => { sk.own = remover ? sk.own.filter((id) => !pack.skins.includes(id)) : [...new Set(sk.own.concat(pack.skins))]; return sk; });
     return reply(res, 200, { ok: true, email, pack: body.pack, skins: next.own });
+  }
+
+  // Para quem esqueceu a senha e o servidor não envia e-mail: o administrador cria uma senha nova (a que ele digitar ou uma gerada) e passa para a pessoa.
+  async function adminSenha(req, res, ip) {
+    const body = await adminGate(req, res, ip);
+    if (!body) return;
+    const email = normEmail(body.email);
+    if (!EMAIL_RE.test(email)) return fail(res, 400, 'E-mail inválido.');
+    let senha = body.password;
+    if (senha === undefined || senha === null || senha === '') senha = crypto.randomBytes(9).toString('base64url').slice(0, 10);
+    else if (!pwOk(senha)) return fail(res, 400, 'A senha precisa ter de 8 a 128 caracteres.');
+    await readyP;
+    const acc = await store.byEmail(email);
+    if (!acc) return fail(res, 404, 'Não existe conta com esse e-mail.');
+    const pass = await hashPw(senha);
+    await store.update(acc.id, { pass, code: null });
+    await store.delSessionsOf(acc.id); // quem estiver logado com a senha antiga precisa entrar de novo
+    return reply(res, 200, { ok: true, email, senha });
   }
 
   // Devolve a conta de um token de login (ou null). Lança erro se o armazenamento estiver fora do ar.
@@ -340,9 +363,10 @@ function create(opts) {
 
   async function route(req, res, url) {
     const ip = clientIp(req);
-    if (url === '/api/config' && req.method === 'GET') return reply(res, 200, { enabled: true, mail: !!mailer, persistent: !!store.persistent, import: allowImport });
+    if (url === '/api/config' && req.method === 'GET') return reply(res, 200, { enabled: true, mail: !!mailer, persistent: !!store.persistent, import: allowImport, contato: CONTATO });
     if (url === '/api/loja' && req.method === 'GET') return reply(res, 200, { enabled: true, contato: CONTATO, pixChave: PIX.key, packs: lojaPacks });
     if (url === '/admin/skin') return req.method === 'POST' ? adminSkin(req, res, ip) : fail(res, 405, 'Método não permitido.');
+    if (url === '/admin/senha') return req.method === 'POST' ? adminSenha(req, res, ip) : fail(res, 405, 'Método não permitido.');
     if (req.method !== 'POST' && url !== '/api/me' && url !== '/api/skins') return fail(res, 405, 'Método não permitido.');
     try { await readyP; } catch (e) { return fail(res, 503, 'As contas estão indisponíveis agora. Tente de novo em instantes.'); }
     const body = req.method === 'POST' ? await readJson(req) : {};
@@ -461,7 +485,7 @@ function create(opts) {
   }
   // true se a rota é de /api/ (e a resposta já foi dada)
   function handle(req, res, url) {
-    if (!url.startsWith('/api/') && url !== '/admin/skin') return false;
+    if (!url.startsWith('/api/') && url !== '/admin/skin' && url !== '/admin/senha') return false;
     route(req, res, url).catch((e) => {
       if (res.headersSent) return;
       if (e && (e.message === 'grande' || e.message === 'json')) return fail(res, 400, 'Pedido inválido.');

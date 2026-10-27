@@ -57,7 +57,7 @@ async function suite(label, makeStore, reopen) {
   ok(loja.body.packs.every((p) => pix.parse(p.code)['26'].includes('guiaugusto_32@outlook.com')), 'a chave Pix é o e-mail combinado');
 
   const r = await call(base, 'POST', '/api/register', { email: 'Cli@Teste.com', password: 'senha-forte-1' });
-  const tok = r.body.token;
+  let tok = r.body.token;
   ok(r.status === 200 && tok, 'cadastro da cliente');
   ok((await call(base, 'GET', '/api/skins')).status === 401, 'ver skins exige login');
   let s = await call(base, 'GET', '/api/skins', null, tok);
@@ -75,6 +75,21 @@ async function suite(label, makeStore, reopen) {
   ok(s.body.own.length === 0, 'nada foi liberado pelas tentativas recusadas');
   ok((await call(base, 'POST', '/admin/skin', { email: 'nao@existe.com', pack: 'mago' }, ADM)).status === 404, 'e-mail sem conta: 404');
   ok((await call(base, 'POST', '/admin/skin', { email: 'cli@teste.com', pack: 'xyz' }, ADM)).status === 400, 'pacote inexistente: 400');
+
+  // senha esquecida (sem e-mail no servidor): o administrador cria uma senha nova
+  ok((await call(base, 'POST', '/admin/senha', { email: 'cli@teste.com' })).status === 401, 'senha nova sem senha de administrador: 401');
+  ok((await call(base, 'POST', '/admin/senha', { email: 'cli@teste.com' }, tok)).status === 401, 'o login de um jogador não vale para trocar senhas');
+  ok((await call(base, 'POST', '/admin/senha', { email: 'nao@existe.com' }, ADM)).status === 404, 'senha nova: e-mail sem conta, 404');
+  ok((await call(base, 'POST', '/admin/senha', { email: 'cli@teste.com', password: 'curta' }, ADM)).status === 400, 'senha nova curta demais: 400');
+  const gen = await call(base, 'POST', '/admin/senha', { email: 'cli@teste.com' }, ADM);
+  ok(gen.status === 200 && typeof gen.body.senha === 'string' && gen.body.senha.length >= 8, 'sem senha no pedido, o servidor gera uma');
+  ok((await call(base, 'POST', '/api/login', { email: 'cli@teste.com', password: 'senha-forte-1' })).status === 401, 'a senha antiga deixa de valer');
+  const lg = await call(base, 'POST', '/api/login', { email: 'cli@teste.com', password: gen.body.senha });
+  ok(lg.status === 200 && lg.body.token, 'a senha gerada funciona para entrar');
+  ok((await call(base, 'GET', '/api/skins', null, tok)).status === 401, 'quem estava logado com a senha antiga precisa entrar de novo');
+  const mine = await call(base, 'POST', '/admin/senha', { email: 'cli@teste.com', password: 'senha-forte-1' }, ADM);
+  ok(mine.status === 200 && (await call(base, 'POST', '/api/login', { email: 'cli@teste.com', password: 'senha-forte-1' })).status === 200, 'o administrador também pode escolher a senha');
+  tok = (await call(base, 'POST', '/api/login', { email: 'cli@teste.com', password: 'senha-forte-1' })).body.token;
   ok((await call(base, 'POST', '/admin/skin', { email: 'sem-arroba', pack: 'mago' }, ADM)).status === 400, 'e-mail inválido: 400');
   let g = await call(base, 'POST', '/admin/skin', { email: ' CLI@teste.com ', pack: 'mago' }, ADM);
   ok(g.status === 200 && g.body.skins.join() === 'mago' && granted.length === 1 && granted[0][1].join() === 'mago', 'liberar o pacote Mago funciona (e avisa o jogo online)');

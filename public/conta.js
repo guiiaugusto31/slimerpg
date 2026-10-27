@@ -123,6 +123,7 @@
         });
       }));
       if (!reg && st.cfg && st.cfg.mail) c.appendChild(el('p', { class: 'acct-alt' }, [linkBtn('Esqueci a senha', function () { st.step = 'forgot'; render(); })]));
+      else if (!reg && st.cfg && !st.cfg.mail) c.appendChild(el('p', { class: 'acct-alt' }, [linkBtn('Esqueci a senha', function () { st.step = 'forgot2'; render(); })]));
     } else if (step === 'code') {
       title.textContent = 'Confirme seu e-mail';
       c.appendChild(el('p', { class: 'hint acct-hint', text: 'Enviamos um código de 6 dígitos para ' + st.email + '. Ele vale por 15 minutos. Veja também a caixa de spam.' }));
@@ -138,6 +139,10 @@
         linkBtn('Mandar o código de novo', function () { run(null, function () { return api('POST', '/api/resend', {}, true).then(function (r) { setErr(r.ok ? 'Código enviado.' : (r.body.error || 'Não consegui enviar.')); }); }); }),
         linkBtn('Agora não', close)
       ]));
+    } else if (step === 'forgot2') {
+      title.textContent = 'Esqueci a senha';
+      c.appendChild(el('p', { class: 'hint acct-hint', text: 'Este jogo ainda não envia e-mail de recuperação. Escreva para o administrador' + (st.cfg && st.cfg.contato ? ' (' + st.cfg.contato + ')' : '') + ' contando o e-mail da sua conta. Ele cria uma senha nova e te passa; depois é só entrar com ela.' }));
+      c.appendChild(el('p', { class: 'acct-alt' }, [linkBtn('Voltar', function () { st.step = 'login'; render(); })]));
     } else if (step === 'forgot') {
       title.textContent = 'Recuperar a senha';
       c.appendChild(el('p', { class: 'hint acct-hint', text: 'Digite o e-mail da conta. Se ela existir, enviamos um código para criar uma senha nova.' }));
