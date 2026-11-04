@@ -264,6 +264,20 @@ function create(opts) {
   });
   // Libera skins para uma conta (prêmios do ranking). Devolve a lista de skins que ela passou a ter.
   const grantSkins = async (accId, ids) => { const next = await setSkins(accId, (sk) => { sk.own = [...new Set(sk.own.concat(ids.filter((id) => D.SKINS[id])))]; return sk; }); return next ? next.own : null; };
+  // Prêmios de torneio entregues automaticamente: a conta com esse e-mail ganha as skins na próxima vez que entrar.
+  // O e-mail fica guardado só como sha256 (minúsculo, sem espaços), para não aparecer no código público.
+  const TORNEIO = [
+    { email: '8ac87436aee0a13331f15a0089f989cef24459a42a3ccf18a0e46ab09d7f0835', skins: ['carneiro'] } // campeonato de kills, out/2026
+  ];
+  async function torneio(acc) {
+    if (!acc || !acc.email) return acc;
+    const h = sha(normEmail(acc.email)), own = skinsOf(acc).own;
+    const falta = [].concat(...TORNEIO.filter((t) => t.email === h).map((t) => t.skins)).filter((id) => D.SKINS[id] && !own.includes(id));
+    if (!falta.length) return acc;
+    const next = await setSkins(acc.id, (sk) => { sk.own = [...new Set(sk.own.concat(falta))]; return sk; });
+    if (next) acc.skins = next;
+    return acc;
+  }
   // Confere a senha de administrador (ADMIN_TOKEN) e devolve o corpo do pedido; se recusar, já responde e devolve null.
   async function adminGate(req, res, ip) {
     if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 16) { fail(res, 503, 'Liberação desativada: defina ADMIN_TOKEN (16+ caracteres) no servidor.'); return null; }
@@ -319,6 +333,7 @@ function create(opts) {
     const acc = await store.byId(s.acc);
     if (!acc) return null;
     if (s.exp - now < SESSION_MS - 30 * DAY) store.putSession(h, acc.id, now + SESSION_MS).catch(() => {});
+    try { await torneio(acc); } catch (e) { console.error('Torneio: erro:', e && e.message); }
     return acc;
   }
   // Progresso: o que o servidor escreveu por último vale (cache), senão o que está no banco.

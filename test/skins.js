@@ -59,6 +59,14 @@ async function suite(label, makeStore, reopen) {
   const r = await call(base, 'POST', '/api/register', { email: 'Cli@Teste.com', password: 'senha-forte-1' });
   let tok = r.body.token;
   ok(r.status === 200 && tok, 'cadastro da cliente');
+  { // prêmio de torneio automático: a conta do vencedor ganha os chifres ao entrar; as outras não
+    const v = await call(base, 'POST', '/api/register', { email: ' Lucas.Kola@gmail.com ', password: 'senha-forte-9' });
+    const vs = await call(base, 'GET', '/api/skins', null, v.body.token);
+    ok(vs.status === 200 && vs.body.own.includes('carneiro'), 'o vencedor do torneio recebe os chifres de carneiro sozinho');
+    const cs = await call(base, 'GET', '/api/skins', null, tok);
+    ok(cs.status === 200 && !cs.body.own.includes('carneiro'), 'outras contas não recebem o prêmio do torneio');
+    granted.length = 0; // o aviso ao jogo dessa liberação não conta no teste do Mago abaixo
+  }
   ok((await call(base, 'GET', '/api/skins')).status === 401, 'ver skins exige login');
   let s = await call(base, 'GET', '/api/skins', null, tok);
   ok(s.status === 200 && s.body.own.length === 0 && s.body.eq.head === null, 'conta nova não tem skins');
