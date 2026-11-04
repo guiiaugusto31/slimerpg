@@ -322,6 +322,8 @@ const SKINS = {
   // Prêmios do ranking semanal (não estão à venda): quem termina a semana em 1º resgata na loja
   dragao: { name: 'Cabeça de dragão', slot: 'head', code: 7, prize: true },
   dragao_ouro: { name: 'Cabeça de dragão dourada', slot: 'head', code: 8, prize: true },
+  // Prêmio de torneio (não está à venda nem é semanal): o administrador libera pela conta do vencedor
+  carneiro: { name: 'Chifres de carneiro', slot: 'head', code: 9, prize: true, torneio: true },
   lapide: { name: 'Lápide (ao abater)', slot: 'kill', code: 1, prize: true },
   lapide_ouro: { name: 'Lápide dourada (ao abater)', slot: 'kill', code: 2, prize: true }
 };

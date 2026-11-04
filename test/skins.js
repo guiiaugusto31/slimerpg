@@ -93,6 +93,13 @@ async function suite(label, makeStore, reopen) {
   ok((await call(base, 'POST', '/admin/skin', { email: 'sem-arroba', pack: 'mago' }, ADM)).status === 400, 'e-mail inválido: 400');
   let g = await call(base, 'POST', '/admin/skin', { email: ' CLI@teste.com ', pack: 'mago' }, ADM);
   ok(g.status === 200 && g.body.skins.join() === 'mago' && granted.length === 1 && granted[0][1].join() === 'mago', 'liberar o pacote Mago funciona (e avisa o jogo online)');
+  // prêmio de torneio: skin solta, fora da loja
+  ok((await call(base, 'POST', '/admin/skin', { email: 'cli@teste.com', skin: 'xyz' }, ADM)).status === 400, 'skin inexistente: 400');
+  const tor = await call(base, 'POST', '/admin/skin', { email: 'cli@teste.com', skin: 'carneiro' }, ADM);
+  ok(tor.status === 200 && tor.body.skins.includes('carneiro'), 'administrador libera os chifres de carneiro (prêmio de torneio)');
+  ok(!Object.values(D.SKIN_PACKS).some((p) => p.skins.includes('carneiro')), 'os chifres de carneiro não estão à venda');
+  const torRm = await call(base, 'POST', '/admin/skin', { email: 'cli@teste.com', skin: 'carneiro', remover: true }, ADM);
+  ok(torRm.status === 200 && !torRm.body.skins.includes('carneiro'), 'e pode desfazer com "remover"');
   g = await call(base, 'POST', '/admin/skin', { email: 'cli@teste.com', pack: 'mago' }, ADM);
   ok(g.status === 200 && g.body.skins.join() === 'mago', 'liberar de novo não duplica');
   g = await call(base, 'POST', '/admin/skin', { email: 'cli@teste.com', pack: 'chapeus' }, ADM);

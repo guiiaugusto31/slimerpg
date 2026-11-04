@@ -200,7 +200,7 @@
       var list = el('div', { class: 'shop-opts', role: 'radiogroup', 'aria-label': SLOT_NAMES[slot] });
       function opt(id, label) {
         var has = !id || st.own.indexOf(id) >= 0, on = (st.eq[slot] || null) === (id || null);
-        var b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(on), class: has ? '' : 'locked', text: label + (has ? '' : (id && GD.SKINS[id].prize ? ' (prêmio semanal)' : ' (bloqueada)')) });
+        var b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(on), class: has ? '' : 'locked', text: label + (has ? '' : (id && GD.SKINS[id].torneio ? ' (prêmio de torneio)' : id && GD.SKINS[id].prize ? ' (prêmio semanal)' : ' (bloqueada)')) });
         b.addEventListener('click', function () { if (!has) { st.tab = 'loja'; render(); return; } equip(slot, id); });
         list.appendChild(b);
       }

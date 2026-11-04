@@ -277,15 +277,19 @@ function create(opts) {
   async function adminSkin(req, res, ip) {
     const body = await adminGate(req, res, ip);
     if (!body) return;
-    const email = normEmail(body.email), pack = D.SKIN_PACKS[body.pack];
+    const email = normEmail(body.email);
+    // "pack" libera um pacote da loja; "skin" libera uma skin solta (ex.: prêmio de torneio, que não está à venda)
+    const single = typeof body.skin === 'string' && Object.prototype.hasOwnProperty.call(D.SKINS, body.skin) ? body.skin : null;
+    const pack = single ? { skins: [single] } : D.SKIN_PACKS[body.pack];
     if (!EMAIL_RE.test(email)) return fail(res, 400, 'E-mail inválido.');
+    if (body.skin !== undefined && !single) return fail(res, 400, 'Skin inválida. Use: ' + Object.keys(D.SKINS).join(', ') + '.');
     if (!pack) return fail(res, 400, 'Pacote inválido. Use: ' + Object.keys(D.SKIN_PACKS).join(', ') + '.');
     await readyP;
     const acc = await store.byEmail(email);
     if (!acc) return fail(res, 404, 'Não existe conta com esse e-mail.');
     const remover = body.remover === true;
     const next = await setSkins(acc.id, (sk) => { sk.own = remover ? sk.own.filter((id) => !pack.skins.includes(id)) : [...new Set(sk.own.concat(pack.skins))]; return sk; });
-    return reply(res, 200, { ok: true, email, pack: body.pack, skins: next.own });
+    return reply(res, 200, { ok: true, email, pack: single ? undefined : body.pack, skin: single || undefined, skins: next.own });
   }
 
   // Para quem esqueceu a senha e o servidor não envia e-mail: o administrador cria uma senha nova (a que ele digitar ou uma gerada) e passa para a pessoa.

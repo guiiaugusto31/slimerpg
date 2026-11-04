@@ -221,6 +221,12 @@ Skins são **só visuais**: nada de arma, roupa, nível ou atributo (o jogo tem 
 curl -X POST https://SEU-SITE/admin/skin -H "Authorization: Bearer SUA_ADMIN_TOKEN" -d '{"email":"cliente@exemplo.com","pack":"mago"}'
 ```
 
+**Liberar um prêmio de torneio** (skin solta, fora da loja; hoje: `carneiro` = Chifres de carneiro):
+
+```
+curl -X POST https://SEU-SITE/admin/skin -H "Authorization: Bearer SUA_ADMIN_TOKEN" -d '{"email":"vencedor@exemplo.com","skin":"carneiro"}'
+```
+
 A senha é comparada de forma segura, e depois de 8 erros seguidos o IP fica bloqueado por 15 minutos. Se o jogador estiver online, o chapéu aparece na hora. Para o Pix/QR valer, confira no app do banco que o nome e a chave estão como esperado (ajuste `PIX_NOME`/`PIX_CIDADE`). Na versão de teste (preview) a loja aparece desativada.
 
 ## Estrutura

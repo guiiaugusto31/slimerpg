@@ -386,7 +386,17 @@
       g.restore();
     },
     dragao: function (g, prof, t) { dragonHead(g, prof, t, false); }, // prêmio semanal (cooperativo)
-    dragao_ouro: function (g, prof, t) { dragonHead(g, prof, t, true); } // prêmio semanal (clássico)
+    dragao_ouro: function (g, prof, t) { dragonHead(g, prof, t, true); }, // prêmio semanal (clássico)
+    carneiro: function (g, prof, t) { // prêmio de torneio: chifres enrolados (desenho reserva; o normal é a imagem hat_carneiro)
+      g.save(); hatBase(g, prof, t, 0, 0.06, 0);
+      g.strokeStyle = '#4a3326'; g.lineWidth = 0.05; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(-0.24, 0.0); g.quadraticCurveTo(0, -0.12, 0.24, 0.0); g.stroke();
+      [-1, 1].forEach(function (s) {
+        g.beginPath(); g.moveTo(0.16 * s, -0.04); g.bezierCurveTo(0.42 * s, -0.2, 0.52 * s, 0.08, 0.36 * s, 0.12); g.bezierCurveTo(0.26 * s, 0.14, 0.24 * s, 0.03, 0.32 * s, 0.03);
+        g.strokeStyle = SK_INK; g.lineWidth = 0.075; g.stroke(); g.strokeStyle = '#a07a5c'; g.lineWidth = 0.055; g.stroke();
+      });
+      g.restore();
+    }
   };
   // Cabeça de dragão apoiada no topo do slime: chifres para trás, focinho para a frente, olho com pupila de fenda.
   function dragonHead(g, prof, t, gold) {
@@ -424,7 +434,8 @@
     marinheiro: { w: 0.78, ay: 0.78, lift: 0.105, tilt: 0.03 },
     cartola:    { w: 0.64, ay: 0.80, lift: 0.15, tilt: -0.05, flip: true },
     mago:       { w: 0.84, ay: 0.88, lift: 0.105, tilt: -0.04 },
-    pirata:     { w: 0.82, ay: 0.74, lift: 0.115, tilt: 0 }
+    pirata:     { w: 0.82, ay: 0.74, lift: 0.115, tilt: 0 },
+    carneiro:   { w: 0.96, ay: 0.6, lift: 0.075, tilt: 0 }
   };
   function spriteHat(g, id, prof, t, w, h) {
     var C = HAT_IMG[id], im = IMG['hat_' + id];
