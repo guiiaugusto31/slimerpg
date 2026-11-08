@@ -13,6 +13,11 @@
       : '<b>' + E.name + '</b>: toda sexta às ' + E.hour + 'h, XP em dobro por ' + E.minutes + ' min. Começa em ' + falta + '.';
   }
   eventTick(); setInterval(eventTick, 30000);
+  // Idioma (i18n.js): Português / English
+  document.querySelectorAll('[data-lang]').forEach(function (b) {
+    b.classList.toggle('on', b.getAttribute('data-lang') === (window.LANG || 'pt'));
+    b.addEventListener('click', function () { if (window.setLang && b.getAttribute('data-lang') !== window.LANG) window.setLang(b.getAttribute('data-lang')); });
+  });
   if (GD.FOUNDER && Date.now() >= GD.FOUNDER.until) { var fn = document.querySelector('.founder-note'); if (fn) fn.hidden = true; } // o convite de pioneiro acabou
   // Link de convite (?c=código): guarda quem convidou, para enviar quando a conta for criada
   try { var cvq = new URLSearchParams(location.search).get('c'); if (cvq && /^[0-9a-z]{1,8}$/.test(cvq)) localStorage.setItem('slimeConvite', cvq); } catch (e) { /* sem armazenamento */ }
@@ -127,6 +132,7 @@
   }
   Array.prototype.forEach.call(document.querySelectorAll('#modes button'), function (b) { b.addEventListener('click', function () { setMode(b.dataset.mode); }); });
   setMode(store.get('slimeio_mode', 'classic'));
+  window.addEventListener('portalready', function () { var im = Portal.inviteMode(); if (im) setMode(im); }); // convite do portal abre no mesmo modo
   // quantos jogadores há em cada modo, na tela inicial (atualiza a cada 8 s enquanto ela estiver aberta)
   function showCounts() {
     if ($('title').hidden) return;
@@ -182,7 +188,7 @@
   function onMsg(m) {
     switch (m.t) {
       case 'init':
-        S.id = m.id; S.joined = true; S.joinAt = Date.now(); SND.enter(); S.mode = m.mode || 'classic'; S.best = m.best || [];
+        S.id = m.id; S.joined = true; S.joinAt = Date.now(); if (window.Portal) Portal.start(); SND.enter(); S.mode = m.mode || 'classic'; S.best = m.best || [];
         updateModeChip();
         S.spec = !!m.spec; document.body.classList.toggle('spec', S.spec);
         if (S.spec) { S.players.clear(); S.roster = {}; S.mobs.clear && S.mobs.clear(); $('specBar').hidden = false; $('specTag').textContent = 'Espectador · sala ' + m.room; $('kcBtn').hidden = $('kcReset').hidden = !m.admin; S.isAdmin = !!m.admin; }
@@ -909,6 +915,7 @@
     var ov = $('lvlOverlay');
     if (!item) { lvlBusy = false; ov.hidden = true; return; }
     lvlBusy = true;
+    if (item.level >= 20 && window.Portal) Portal.happy(); // nível máximo: momento de comemorar no portal
     ov.classList.remove('out'); ov.hidden = false;
     ov.innerHTML = '<h2>Nível ' + item.level + '</h2><p class="lvl-pts">' + GD.ATTRS.map(function (k) { return ATTR_SHORT[k] + ' +' + (item.gain[k] || 0); }).join(' · ') + '</p><small>🎲 dado 1d3 em cada atributo</small>';
     var hold = 2600;
@@ -918,14 +925,66 @@
 
   /* ---- morte ---- */
   function onDeath(m) {
-    S.dead = true; S.alive = false;
+    S.dead = true; S.alive = false; if (window.Portal) Portal.stop();
     $('deathText').textContent = 'Derrotado por ' + m.by + '. Você perdeu o nível ' + m.lvl + ' e os atributos, mas seus equipamentos continuam com você.';
+    S.lastLvl = m.lvl;
     setTimeout(function () { if (S.dead) $('deathOverlay').hidden = false; }, 700);
   }
-  function respawn() { if (!S.dead) return; send({ t: 'respawn' }); $('deathOverlay').hidden = true; }
+  function respawn() { if (!S.dead) return; send({ t: 'respawn' }); $('deathOverlay').hidden = true; if (window.Portal) Portal.start(); }
+  /* ---- compartilhar: cartão com o resultado + link (com o convite da conta, se tiver) ---- */
+  function inviteLink() {
+    if (window.Portal && Portal.on) { var pl = Portal.invite(cfg.mode); if (pl) return Promise.resolve(pl); }
+    var base = location.origin + '/';
+    if (!hasAccount()) return Promise.resolve(base);
+    return fetch('/api/convite', { headers: { Authorization: 'Bearer ' + Conta.token() } }).then(function (r) { return r.json(); })
+      .then(function (b) { return b && b.code ? base + '?c=' + b.code : base; }).catch(function () { return base; });
+  }
+  function shareCard(title) {
+    var c = document.createElement('canvas'); c.width = 1080; c.height = 1080;
+    var g = c.getContext('2d'), W2 = 1080;
+    var bg = g.createRadialGradient(540, 620, 60, 540, 620, 760); bg.addColorStop(0, '#46733d'); bg.addColorStop(0.6, '#1f3a22'); bg.addColorStop(1, '#0b140f');
+    g.fillStyle = bg; g.fillRect(0, 0, W2, W2);
+    g.fillStyle = 'rgba(170,160,125,.22)'; g.beginPath(); g.ellipse(540, 770, 360, 100, 0, 0, 7); g.fill();
+    var txt = function (t, y, size, fill, font) {
+      g.textAlign = 'center'; g.font = (font || '800 ') + size + 'px Alegreya, Georgia, serif'; g.lineJoin = 'round';
+      g.lineWidth = size * 0.16; g.strokeStyle = '#120c08'; g.strokeText(t, 540, y); g.fillStyle = fill; g.fillText(t, 540, y);
+    };
+    var gold = g.createLinearGradient(0, 60, 0, 170); gold.addColorStop(0, '#fff3c4'); gold.addColorStop(1, '#f2b53a');
+    txt('SlimeRPG', 160, 130, gold);
+    txt(title, 270, 64, '#f4efe2', '700 ');
+    try { ART.drawSlime(g, 540, 760, 175, (cfg && cfg.color) || '#5fd35f', 0.4, false, false, { cloth: 'vital_0', skin: (S.id && skinFor(S.id)) || (Lj ? Lj.equipped() : null) }); } catch (e) { /* sem arte */ }
+    txt((cfg && cfg.name) || $('nameIn').value || 'Slime', 945, 60, '#bfe8a6', '700 ');
+    txt('Grátis no navegador: slimerpg.onrender.com', 1035, 44, '#ffe483', '700 ');
+    return c;
+  }
+  function shareNow(title, text, btn) {
+    var c = shareCard(title);
+    inviteLink().then(function (url) {
+      var msg = text + ' ' + url;
+      c.toBlob(function (blob) {
+        var file = blob && window.File ? new File([blob], 'slimerpg.png', { type: 'image/png' }) : null;
+        if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], text: msg }).catch(function () {});
+        } else if (navigator.share) {
+          navigator.share({ title: 'SlimeRPG', text: text, url: url }).catch(function () {});
+        } else { // computador sem compartilhamento: baixa a imagem e copia o texto com o link
+          var a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = 'slimerpg.png'; document.body.appendChild(a); a.click(); a.remove();
+          try { navigator.clipboard.writeText(msg).catch(function () {}); } catch (e) { /* sem área de transferência */ }
+          if (btn) { var t0 = btn.textContent; btn.textContent = 'Imagem baixada e link copiado!'; setTimeout(function () { btn.textContent = t0; }, 2500); }
+        }
+      }, 'image/png');
+    });
+  }
+  $('shareBtn').addEventListener('click', function () {
+    var lv = S.lastLvl || 1;
+    shareNow('Cheguei ao nível ' + lv + '!', 'Cheguei ao nível ' + lv + ' no SlimeRPG, jogo grátis de navegador. Duvido você passar:', $('shareBtn'));
+  });
+  $('shareGameBtn').addEventListener('click', function () {
+    shareNow('Vem jogar comigo!', 'Bora jogar SlimeRPG comigo? É grátis, no navegador do celular ou do PC:', $('shareGameBtn'));
+  });
   $('respawnBtn').addEventListener('click', respawn);
   // Voltar ao menu: sai da sala (o progresso já está guardado) e recarrega a tela inicial
-  $('menuBtn').addEventListener('click', function () { S.failed = true; try { ws.close(); } catch (x) { /* já fechou */ } location.reload(); });
+  $('menuBtn').addEventListener('click', function () { if (window.Portal) Portal.stop(); S.failed = true; try { ws.close(); } catch (x) { /* já fechou */ } location.reload(); });
   var menuArm = 0; // "Voltar ao menu" durante a partida: pede um segundo toque para não sair sem querer
   $('btnMenu').addEventListener('click', function () {
     var b = $('btnMenu');

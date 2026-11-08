@@ -7,8 +7,8 @@ SlimeRPG é um jogo online grátis de navegador, no estilo .io, feito por um des
 ## Key facts
 - Price: free to play. Cosmetic skins only (no pay-to-win).
 - Platform: web browser (Chrome, Edge, Firefox, Safari), desktop and mobile; can also be installed as an app (PWA), optional.
-- Language: Portuguese (Brazil).
-- Players: up to 30 per room, real time.
+- Language: Portuguese and English (language switch on the title screen; English is automatic for non-Portuguese browsers).
+- Players: up to 30 per room, real time; computer-controlled slimes (marked "(bot)") fill quiet rooms so there is always someone to play with.
 - Genre: multiplayer action RPG / .io game with cute monsters.
 - How to play: you only move (WASD/arrows or touch joystick); weapons attack and use skills automatically. Level up to 20, collect weapons and armor, combine two weapons for a mixed skill.
 - Modes: Classic (monsters + PvP + dragon boss), Co-op (everyone together against the dragon, fastest time ranking), PvP (kills ranking).

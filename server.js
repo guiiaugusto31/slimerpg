@@ -80,11 +80,12 @@ const server = http.createServer((req, res) => {
   }
   if (url === '/status') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
+    const humans = (r) => { let n = 0; r.players.forEach((q) => { if (!q.bot) n++; }); return n; }; // a contagem do menu mostra só gente de verdade
     return res.end(JSON.stringify({
       rooms: rooms.length,
-      players: rooms.reduce((s, r) => s + r.players.size, 0),
-      modes: Object.keys(D.MODES).reduce((o, k) => { o[k] = rooms.reduce((s, r) => s + (r.mode === k ? r.players.size : 0), 0); return o; }, {}),
-      perRoom: rooms.map((r) => ({ id: r.id, players: r.players.size }))
+      players: rooms.reduce((s, r) => s + humans(r), 0),
+      modes: Object.keys(D.MODES).reduce((o, k) => { o[k] = rooms.reduce((s, r) => s + (r.mode === k ? humans(r) : 0), 0); return o; }, {}),
+      perRoom: rooms.map((r) => ({ id: r.id, players: humans(r), bots: r.players.size - humans(r) }))
     }));
   }
   if (url === '/api/ranking' && req.method === 'GET') return serveRanking(req, res);
@@ -1358,8 +1359,111 @@ function lbMsg(room) {
   return { t: 'lb', l: arr, md: room.mode };
 }
 
+/* ------------------------------ bots ------------------------------ */
+// Salas com pouca gente ganham slimes controlados pelo servidor, para quem chega não encontrar o mapa vazio.
+// Eles saem sozinhos quando entram jogadores de verdade e somem quando a sala fica sem ninguém. Não têm conta,
+// não contam em ranking nem em contador de abates, e aparecem com "bot" no nome.
+const BOT_FILL = 8; // a sala tenta ter pelo menos esta quantidade de slimes (gente + bots)
+const BOT_NAMES = ['Gelatina', 'Pudim', 'Bolhinha', 'Mochi', 'Geleia', 'Gotinha', 'Melado', 'Sagu', 'Flan', 'Chiclete', 'Bolota', 'Grude', 'Pingo', 'Quindim', 'Marshmallow', 'Docinho'];
+const BOT_COLORS = ['#5fd35f', '#4fb3e8', '#e86fb0', '#f2b53a', '#9b7be8', '#ff7a59', '#3fc9b0', '#e8e05a'];
+const botWs = { readyState: 3, send() {}, close() {} };
+const isBot = (p) => !!p.bot;
+function addBot(room) {
+  const used = new Set([...room.players.values()].map((q) => q.name));
+  const free = BOT_NAMES.filter((n) => !used.has(n + ' (bot)'));
+  const base = free.length ? free[Math.floor(Math.random() * free.length)] : 'Slime' + Math.floor(rnd(10, 99));
+  const p = makePlayer(botWs, (base + ' (bot)').slice(0, 20), BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)], null, room.mode);
+  p.bot = { deadAt: 0, think: 0, tx: 0, ty: 0, gearT: 0, grudge: 0 };
+  p.room = room;
+  room.players.set(p.id, p);
+  spawnPlayer(room, p);
+  bcast(room, { t: 'pj', id: p.id, name: p.name, color: p.color, sk: 0 });
+  return p;
+}
+function removeBot(room, p) {
+  p.gone = true;
+  room.players.delete(p.id);
+  bcast(room, { t: 'pl', id: p.id });
+}
+// Mantém a quantidade de bots: entra ou sai um por vez, a cada 2 s.
+function balanceBots(room) {
+  let humans = 0, bots = [];
+  room.players.forEach((q) => { if (q.bot) bots.push(q); else humans++; });
+  if (!humans) {
+    bots.forEach((b) => removeBot(room, b));
+    if (!room.players.size && !room.specs.size) { const i = rooms.indexOf(room); if (i >= 0) rooms.splice(i, 1); } // sala vazia: fecha
+    return;
+  }
+  const want = Math.max(0, BOT_FILL - humans);
+  if (bots.length < want) addBot(room);
+  else if (bots.length > want) {
+    const out = bots.find((b) => !b.alive) || bots.sort((a, b) => a.level - b.level)[0]; // sai primeiro quem está morto ou mais fraco
+    removeBot(room, out);
+  }
+}
+// Melhor equipamento que o bot já pode usar (os drops que ele pega vão para o inventário dele).
+function botGear(p) {
+  const ok = (id, kind) => { const it = D.ITEMS[id]; return it && it.kind === kind && D.meetsReq(it, p.stats); };
+  const tierOf = (id) => (D.ITEMS[id].tier || 0);
+  const ws = p.inv.filter((id) => ok(id, 'weapon')).sort((a, b) => tierOf(b) - tierOf(a));
+  const ar = p.inv.filter((id) => ok(id, 'armor')).sort((a, b) => tierOf(b) - tierOf(a));
+  const w = [ws[0] || 'faca', ws[1] || null];
+  const a = ar[0] || 'vital_0';
+  if (w[0] !== p.equip.w[0] || w[1] !== p.equip.w[1] || a !== p.equip.a) { p.equip.w = w; p.equip.a = a; recalc(p); }
+}
+function botThink(room, p) {
+  const b = p.bot;
+  if (!p.alive) {
+    p.mx = p.my = 0;
+    if (!b.deadAt) b.deadAt = room.now;
+    if (room.now - b.deadAt > 4) { b.deadAt = 0; spawnPlayer(room, p); }
+    return;
+  }
+  if ((b.gearT -= DT) <= 0) { b.gearT = 5; botGear(p); }
+  if ((b.think -= DT) > 0) return;
+  b.think = 0.25 + Math.random() * 0.2;
+  const dx = p.x - W.cx, dy = p.y - W.cy, nd = Math.hypot(dx / W.rx, dy / W.ry); // 1 = borda do mapa, 0 = centro (dragão)
+  const zone = Math.min(D.ZONES.length - 2, Math.floor((p.level - 1) / 3)); // anel de monstros que combina com o nível
+  const hurt = p.hp < p.maxHp * 0.3;
+  let tgt = null, best = Infinity;
+  const pvpOn = room.mode !== 'coop';
+  if (pvpOn && !hurt) { // briga com quem está perto e não é bem mais forte
+    room.players.forEach((q) => {
+      if (q === p || !q.alive || q.spec || q.level > p.level + 2) return;
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < 420 && d < best) { best = d; tgt = q; }
+    });
+  }
+  if (!tgt && !hurt) {
+    for (const m of room.mobs) {
+      if (!m.alive || m.def.boss || m.zi > zone) continue;
+      const d = Math.hypot(m.x - p.x, m.y - p.y) * (m.zi === zone ? 0.7 : 1); // prefere o anel do próprio nível
+      if (d < best) { best = d; tgt = m; }
+    }
+  }
+  let mx = 0, my = 0;
+  if (hurt) { // fugir: para fora, longe do centro, até regenerar
+    mx = dx; my = dy;
+  } else if (tgt) {
+    const range = Math.max(60, (p.active[0] && p.active[0].F.range) || 80) * 0.75;
+    const tx = tgt.x - p.x, ty = tgt.y - p.y, d = Math.hypot(tx, ty);
+    if (d > range) { mx = tx; my = ty; } else { mx = -ty * 0.6 - tx * 0.2; my = tx * 0.6 - ty * 0.2; } // perto: rodeia o alvo
+  } else { // passeia
+    if (!b.tx || Math.hypot(b.tx - p.x, b.ty - p.y) < 80) { const a = Math.random() * Math.PI * 2; b.tx = p.x + Math.cos(a) * 600; b.ty = p.y + Math.sin(a) * 600; }
+    mx = b.tx - p.x; my = b.ty - p.y;
+  }
+  const want = D.ZONES[zone].min - 0.02; // não entra mais fundo que o próprio anel (nem na toca do dragão)
+  if (nd < want) { mx += dx / nd * 0.8; my += dy / nd * 0.8; }
+  const n = Math.hypot(mx, my);
+  p.mx = n ? mx / n : 0; p.my = n ? my / n : 0;
+}
+
 function updateRoom(room) {
   room.now += DT; room.t++;
+  if (BOTS_ON) {
+    if (room.t % (TICK * 2) === 1) balanceBots(room);
+    room.players.forEach((p) => { if (p.bot) botThink(room, p); });
+  }
   room.players.forEach((p) => updatePlayer(room, p));
   room.specs.forEach((sp) => updateSpec(sp));
   updateProjs(room);
@@ -1381,7 +1485,10 @@ function updateRoom(room) {
   });
 }
 
-const SIM = !!(process.env && process.env.SLIME_SIM); // simulador: quem importa este arquivo controla o relógio
+const SIM = !!(process.env && process.env.SLIME_SIM);
+// simulador: quem importa este arquivo controla o relógio
+// Bots: ligados sozinhos na Render (variável RENDER); localmente só com SLIME_BOTS=1, para os testes não mudarem. SLIME_BOTS=0 desliga.
+const BOTS_ON = !SIM && process.env.SLIME_BOTS !== '0' && (process.env.SLIME_BOTS === '1' || !!process.env.RENDER);
 if (!SIM) {
   try {
     accounts = require('./accounts').create({ onSkins: (id, sk) => { const ws = online.get(id); const p = ws && ws.p; if (!p || p.gone) return; p.sk = D.skinCode(sk.eq); send(p, skinsMsg(sk)); bcast(p.room, { t: 'sk', id: p.id, k: p.sk }); }, onDelete: (id) => { if (ranking) ranking.forget(id); const ws = online.get(id); if (ws) kick(ws, 'Sua conta foi excluída.'); } });

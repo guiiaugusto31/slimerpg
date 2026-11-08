@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>SlimeRPG</title>
 <meta name="description" content="Jogo online grátis no navegador: seja um slime, derrote monstros fofos, cresça até o nível 20 e enfrente o dragão com outros jogadores. PC e celular.">
+<script src="i18n.js"></script>
+<script src="portal.js"></script>
 <link rel="canonical" href="https://slimerpg.onrender.com/">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"SlimeRPG","url":"https://slimerpg.onrender.com/","image":"https://slimerpg.onrender.com/og.jpg","description":"Jogo online multiplayer grátis de navegador, no estilo .io: seja um slime, derrote monstros fofos, suba até o nível 20 e enfrente o dragão. Sem instalar, no PC e no celular.","inLanguage":"pt-BR","genre":["Ação","RPG","Multiplayer","Jogo .io"],"gamePlatform":["Navegador web","PC","Celular"],"playMode":["MultiPlayer","CoOp"],"isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"BRL"}}</script>
 <meta property="og:type" content="website">
@@ -83,7 +85,9 @@
     <p id="status" class="status" role="status"></p>
     <button type="button" id="rankOpenTitle" class="acct-open rank-open">Rankings</button>
     <button type="button" id="shopOpenTitle" class="acct-open rank-open">Loja de skins</button>
+    <button type="button" id="shareGameBtn" class="acct-open rank-open">Chamar amigos para jogar</button>
     <a href="sobre.html" class="about-link">Sobre o jogo e perguntas frequentes</a>
+    <div class="lang-row" role="group" aria-label="Idioma / Language"><button type="button" data-lang="pt">Português</button><button type="button" data-lang="en">English</button></div>
     <a id="discordBtn" class="acct-open rank-open discord-btn" href="https://discord.gg/Egks2W6qU" target="_blank" rel="noopener">Discord do jogo: eventos e torneios</a>
     <button type="button" class="acct-open rank-open snd-btn" title="Música e efeitos sonoros">Som: música e efeitos</button>
     <button type="button" id="installBtn" class="acct-open rank-open" hidden>Instalar o jogo no aparelho</button>
@@ -212,6 +216,7 @@
     <h2>Você caiu</h2>
     <p id="deathText"></p>
     <button id="respawnBtn" class="primary">Renascer</button>
+    <button id="shareBtn" type="button" class="share-btn">Compartilhar meu resultado</button>
     <button id="menuBtn" type="button" class="death-menu">Voltar ao menu</button>
   </div>
 </div>

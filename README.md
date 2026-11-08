@@ -227,6 +227,10 @@ curl -X POST https://SEU-SITE/admin/skin -H "Authorization: Bearer SUA_ADMIN_TOK
 - **Coroa da amizade:** quando 3 amigos entram pelo link de convite da pessoa (loja > Convide amigos) e chegam ao nível 5.
 - **Hora do Slime:** toda sexta das 20h às 21h o XP vale em dobro (o menu mostra quanto falta).
 - O servidor se visita a cada 10 min na Render para não dormir.
+- **Bots:** salas com menos de 8 slimes ganham slimes do computador (com "(bot)" no nome); saem quando entra gente. Na Render ligam sozinhos; `SLIME_BOTS=0` desliga.
+- **Inglês:** botão Português/English no menu (`public/i18n.js` traduz a tela). Link direto: `/?lang=en`.
+- **Compartilhar:** botão na tela de morte e "Chamar amigos para jogar" no menu geram uma imagem com o link de convite.
+- **CrazyGames:** `public/portal.js` liga o kit deles só quando o jogo roda lá (e esconde Discord, loja com Pix e links externos).
 
 **Liberar um prêmio de torneio** (skin solta, fora da loja; hoje: `carneiro` = Chifres de carneiro):
 

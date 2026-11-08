@@ -528,3 +528,11 @@ a.discord-btn:hover { border-color: #c9ceff; }
 .invite-link { width: 100%; box-sizing: border-box; margin: 4px 0 6px; padding: 8px; font-size: 13px; border-radius: 6px; border: 1px solid var(--edge); background: rgba(0,0,0,.3); color: var(--mist); }
 .founder-note { color: var(--amber); }
 .about-link { display: block; margin-top: 10px; text-align: center; font-size: 14px; color: var(--dim); }
+
+.share-btn { display: block; width: 100%; margin-top: 8px; background: linear-gradient(180deg, #ffd56b, #f2a93a); color: #2a1a05; border: 1px solid #c98a20; font-weight: 700; }
+.share-btn:hover { border-color: #fff1c4; }
+.lang-row { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }
+.lang-row button { padding: 5px 12px; font-size: 13px; border-radius: 999px; border: 1px solid var(--edge); background: transparent; color: var(--dim); cursor: pointer; }
+.lang-row button.on { background: rgba(255,255,255,.12); color: var(--mist); border-color: var(--mist); }
+/* Dentro do CrazyGames: sem links para fora nem loja com Pix (regras do portal) */
+html.portal #discordBtn, html.portal .about-link, html.portal #installBtn, html.portal #shopOpenTitle, html.portal .founder-note { display: none !important; }
