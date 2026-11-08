@@ -387,6 +387,19 @@
     },
     dragao: function (g, prof, t) { dragonHead(g, prof, t, false); }, // prêmio semanal (cooperativo)
     dragao_ouro: function (g, prof, t) { dragonHead(g, prof, t, true); }, // prêmio semanal (clássico)
+    pioneiro: function (g, prof, t) { // pioneiros de 2026: chapéu de explorador com estrela (desenho reserva; o normal é a imagem hat_pioneiro)
+      g.save(); hatBase(g, prof, t, 0, 0.05, 0);
+      g.fillStyle = '#1f8c80'; g.beginPath(); g.ellipse(0, 0.02, 0.3, 0.06, 0, 0, 7); g.fill(); skOutline(g);
+      g.beginPath(); g.ellipse(0, -0.06, 0.18, 0.13, 0, Math.PI, 0); g.closePath(); g.fill(); skOutline(g);
+      g.fillStyle = '#ffd34d'; g.beginPath(); g.arc(0, -0.04, 0.04, 0, 7); g.fill(); skOutline(g, 0.012);
+      g.restore();
+    },
+    amigo: function (g, prof, t) { // prêmio de convite: coroa de flores (desenho reserva; o normal é a imagem hat_amigo)
+      g.save(); hatBase(g, prof, t, 0, 0.05, 0);
+      g.strokeStyle = '#4d8a3a'; g.lineWidth = 0.05; g.beginPath(); g.ellipse(0, -0.02, 0.27, 0.07, 0, 0, 7); g.stroke();
+      [[-0.22, '#ff9ec4'], [-0.11, '#fffaf0'], [0, '#ff6fa8'], [0.11, '#fffaf0'], [0.22, '#ff9ec4']].forEach(function (f) { g.fillStyle = f[1]; g.beginPath(); g.arc(f[0], 0.03, 0.045, 0, 7); g.fill(); skOutline(g, 0.012); });
+      g.restore();
+    },
     carneiro: function (g, prof, t) { // prêmio de torneio: chifres enrolados (desenho reserva; o normal é a imagem hat_carneiro)
       g.save(); hatBase(g, prof, t, 0, 0.06, 0);
       g.strokeStyle = '#4a3326'; g.lineWidth = 0.05; g.lineCap = 'round';
@@ -435,7 +448,11 @@
     cartola:    { w: 0.64, ay: 0.80, lift: 0.15, tilt: -0.05, flip: true },
     mago:       { w: 0.84, ay: 0.88, lift: 0.105, tilt: -0.04 },
     pirata:     { w: 0.82, ay: 0.74, lift: 0.115, tilt: 0 },
-    carneiro:   { w: 0.96, ay: 0.6, lift: 0.075, tilt: 0 }
+    carneiro:   { w: 0.96, ay: 0.6, lift: 0.075, tilt: 0 },
+    dragao:     { w: 1.0, ay: 0.82, lift: 0.08, tilt: 0 },
+    dragao_ouro: { w: 1.0, ay: 0.82, lift: 0.08, tilt: 0 },
+    amigo:      { w: 0.88, ay: 0.72, lift: 0.1, tilt: 0 },
+    pioneiro:   { w: 0.86, ay: 0.78, lift: 0.1, tilt: 0 }
   };
   function spriteHat(g, id, prof, t, w, h) {
     var C = HAT_IMG[id], im = IMG['hat_' + id];

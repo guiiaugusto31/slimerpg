@@ -221,6 +221,13 @@ Skins são **só visuais**: nada de arma, roupa, nível ou atributo (o jogo tem 
 curl -X POST https://SEU-SITE/admin/skin -H "Authorization: Bearer SUA_ADMIN_TOKEN" -d '{"email":"cliente@exemplo.com","pack":"mago"}'
 ```
 
+**Skins que chegam sozinhas** (não precisa fazer nada):
+- **Prêmios semanais:** na virada da semana (segunda 00h, Brasília) o 1º de cada ranking ganha a skin do ranking.
+- **Chapéu de pioneiro:** toda conta criada até 31/12/2026 ganha ao entrar.
+- **Coroa da amizade:** quando 3 amigos entram pelo link de convite da pessoa (loja > Convide amigos) e chegam ao nível 5.
+- **Hora do Slime:** toda sexta das 20h às 21h o XP vale em dobro (o menu mostra quanto falta).
+- O servidor se visita a cada 10 min na Render para não dormir.
+
 **Liberar um prêmio de torneio** (skin solta, fora da loja; hoje: `carneiro` = Chifres de carneiro):
 
 ```

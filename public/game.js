@@ -2,6 +2,20 @@
 (function () {
   'use strict';
   var GD = module.exports, W = GD.WORLD, FAM = GD.FAMILIES, ITEM = GD.ITEMS, MOBDEF = GD.MOBS;
+  // Evento semanal no menu: quanto falta para a Hora do Slime (XP em dobro) ou até quando ela vai
+  function eventTick() {
+    var box = document.getElementById('eventInfo'); if (!box || !GD.eventAt || !GD.EVENT) return;
+    var now = Date.now(), e = GD.eventAt(now), E = GD.EVENT, ms = e.on ? e.end - now : e.start - now;
+    var m = Math.max(1, Math.ceil(ms / 60000)), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60), mm = m % 60;
+    var falta = d ? d + 'd ' + h + 'h' : h ? h + 'h ' + mm + 'min' : mm + 'min';
+    box.hidden = false; box.classList.toggle('on', e.on);
+    box.innerHTML = e.on ? '<b>' + E.name + ' agora!</b> XP em dobro por mais ' + falta + '.'
+      : '<b>' + E.name + '</b>: toda sexta às ' + E.hour + 'h, XP em dobro por ' + E.minutes + ' min. Começa em ' + falta + '.';
+  }
+  eventTick(); setInterval(eventTick, 30000);
+  if (GD.FOUNDER && Date.now() >= GD.FOUNDER.until) { var fn = document.querySelector('.founder-note'); if (fn) fn.hidden = true; } // o convite de pioneiro acabou
+  // Link de convite (?c=código): guarda quem convidou, para enviar quando a conta for criada
+  try { var cvq = new URLSearchParams(location.search).get('c'); if (cvq && /^[0-9a-z]{1,8}$/.test(cvq)) localStorage.setItem('slimeConvite', cvq); } catch (e) { /* sem armazenamento */ }
   var MOB_KEYS = Object.keys(MOBDEF), BASE_SPEED = 170, TAU = Math.PI * 2;
   var A = window.ART, FX = window.FX, Lj = window.Loja;
   var $ = function (id) { return document.getElementById(id); };

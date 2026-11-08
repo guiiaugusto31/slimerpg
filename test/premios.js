@@ -36,6 +36,8 @@ const WEEK = 7 * 86400000;
   ok(rk.claimable(b).sort().join() === 'pvp,pvpm', 'Bia fechou 1ª nos abates (PvP e clássico)');
   ok(rk.claimable(a).sort().join() === 'coop,dragon', 'Ana fechou 1ª nos tempos de dragão (coop e clássico)');
   ok(rk.claimable(c).length === 0, 'quem não ficou em 1º não tem prêmio');
+  const lw = rk.lastWinners();
+  ok(lw.wins.pvp === b && lw.wins.pvpm === b && lw.wins.coop === a && lw.wins.dragon === a, 'a entrega automática sabe quem fechou em 1º em cada ranking');
   const pz = rk.boards(b).prizes;
   ok(pz.winners.find((w) => w.board === 'pvpm').me === true && pz.winners.find((w) => w.board === 'coop').name === 'Ana', 'a lista mostra o vencedor de cada ranking e marca quem pede');
 

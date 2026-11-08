@@ -69,6 +69,12 @@
   function tombIcon(gold, w, h) { // foto da lápide (o efeito só aparece no jogo, quando você abate alguém)
     var c = el('canvas', { width: w, height: h, class: 'shop-prev', 'aria-hidden': 'true' }), g = c.getContext('2d'), cx = w / 2, by = h - 8, tw = 15, th = h - 18;
     g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(cx, by, tw + 6, 5, 0, 0, 7); g.fill();
+    var timg = window.ART && window.ART.img ? window.ART.img(gold ? 'fx_lapide_ouro' : 'fx_lapide') : null;
+    if (timg) { // a mesma arte de IA que sobe do chão no jogo
+      var ih = h - 10, iw = ih * timg.width / timg.height;
+      g.drawImage(timg, cx - iw / 2, by + 2 - ih, iw, ih);
+      return c;
+    }
     g.beginPath(); g.moveTo(cx - tw, by); g.lineTo(cx - tw, by - th + tw); g.arc(cx, by - th + tw, tw, Math.PI, 0); g.lineTo(cx + tw, by); g.closePath();
     var gr = g.createLinearGradient(cx - tw, 0, cx + tw, 0);
     if (gold) { gr.addColorStop(0, '#a8740d'); gr.addColorStop(0.35, '#ffe483'); gr.addColorStop(1, '#c58b12'); } else { gr.addColorStop(0, '#6d7078'); gr.addColorStop(0.4, '#b8bcc4'); gr.addColorStop(1, '#7b7f88'); }
@@ -148,7 +154,7 @@
   }
   function prizeSection(body) {
     var P = st.prizes, box = el('section', { class: 'shop-prizes' }, [el('h3', { text: 'Prêmios da semana' }),
-      el('p', { class: 'hint', text: 'Quem fecha a semana em 1º lugar de um ranking resgata a skin aqui, na semana seguinte (segunda 00:00, horário de Brasília). Depois de resgatada, é sua para sempre.' })]);
+      el('p', { class: 'hint', text: 'Quem fecha a semana em 1º lugar de um ranking ganha a skin sozinho, na virada da semana (segunda 00:00, horário de Brasília). É sua para sempre.' })]);
     if (!P) { box.appendChild(el('p', { class: 'hint', text: 'Carregando…' })); body.appendChild(box); return; }
     P.winners.forEach(function (w) {
       var pr = GD.WEEK_PRIZES[w.board], sk = GD.SKINS[pr.skin], has = st.own.indexOf(pr.skin) >= 0;
@@ -164,9 +170,43 @@
     body.appendChild(box);
   }
 
+  // Convide amigos: link da conta e quantos amigos já chegaram ao nível do convite
+  function loadInvite() {
+    if (location.protocol === 'file:' || !token()) return Promise.resolve();
+    return api('GET', '/api/convite').then(function (r) { if (r.ok && r.body) { st.invite = r.body; render(); } }).catch(function () {});
+  }
+  function inviteSection(body) {
+    var R = GD.REFERRAL; if (!R) return;
+    var box = el('section', { class: 'shop-prizes' }, [el('h3', { text: 'Convide amigos' })]);
+    var row = el('div', { class: 'shop-prize' }, [prevCanvas({ head: R.skin, kill: null }, 74, 56, 20),
+      el('div', { class: 'shop-prize-t' }, [el('b', { text: GD.SKINS[R.skin].name }),
+        el('small', { text: 'Quando ' + R.need + ' amigos entrarem pelo seu link e chegarem ao nível ' + R.level + ', a coroa é sua.' })])]);
+    box.appendChild(row);
+    var I = st.invite;
+    if (!token()) box.appendChild(el('p', { class: 'hint', text: 'Entre na sua conta para pegar o seu link de convite.' }));
+    else if (!I) box.appendChild(el('p', { class: 'hint', text: 'Carregando…' }));
+    else {
+      if (I.got) row.appendChild(el('span', { class: 'shop-got', text: 'Ganhou' }));
+      var link = location.origin + '/?c=' + I.code;
+      box.appendChild(el('p', { class: 'hint', text: 'Amigos que já contaram: ' + Math.min(I.friends, I.need) + ' de ' + I.need + '.' }));
+      var ta = el('input', { type: 'text', readonly: 'readonly', 'aria-label': 'Seu link de convite', class: 'invite-link' }); ta.value = link;
+      ta.addEventListener('focus', function () { ta.select(); });
+      var cb = el('button', { type: 'button', class: 'primary', text: 'Copiar meu link' });
+      cb.addEventListener('click', function () { copy(link, cb); });
+      box.appendChild(ta); box.appendChild(cb);
+      if (navigator.share) {
+        var sb = el('button', { type: 'button', text: 'Compartilhar' });
+        sb.addEventListener('click', function () { navigator.share({ title: 'SlimeRPG', text: 'Joga SlimeRPG comigo! É grátis no navegador:', url: link }).catch(function () {}); });
+        box.appendChild(sb);
+      }
+    }
+    body.appendChild(box);
+  }
+
   function lojaTab(body) {
     if (st.msg) body.appendChild(el('p', { class: 'shop-note', role: 'status', text: st.msg }));
     prizeSection(body);
+    inviteSection(body);
     var l = st.loja;
     if (!l) { body.appendChild(el('p', { class: 'hint', text: st.lojaErr || 'Carregando a loja…' })); return; }
     body.appendChild(el('p', { class: 'shop-note', text: 'Só visuais: nenhuma skin dá vantagem em combate.' }));
@@ -200,7 +240,7 @@
       var list = el('div', { class: 'shop-opts', role: 'radiogroup', 'aria-label': SLOT_NAMES[slot] });
       function opt(id, label) {
         var has = !id || st.own.indexOf(id) >= 0, on = (st.eq[slot] || null) === (id || null);
-        var b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(on), class: has ? '' : 'locked', text: label + (has ? '' : (id && GD.SKINS[id].torneio ? ' (prêmio de torneio)' : id && GD.SKINS[id].prize ? ' (prêmio semanal)' : ' (bloqueada)')) });
+        var b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(on), class: has ? '' : 'locked', text: label + (has ? '' : (id && GD.SKINS[id].pioneiro ? ' (contas criadas até ' + GD.FOUNDER.label + ')' : id && GD.SKINS[id].convite ? ' (convide 3 amigos)' : id && GD.SKINS[id].torneio ? ' (prêmio de torneio)' : id && GD.SKINS[id].prize ? ' (prêmio semanal)' : ' (bloqueada)')) });
         b.addEventListener('click', function () { if (!has) { st.tab = 'loja'; render(); return; } equip(slot, id); });
         list.appendChild(b);
       }
@@ -230,7 +270,7 @@
   function show(tab) {
     if (tab) st.tab = tab;
     $('shopPanel').hidden = false; st.msg = '';
-    render(); loadLoja(); loadMine(); loadPrizes();
+    render(); loadLoja(); loadMine(); loadPrizes(); loadInvite();
   }
 
   Array.prototype.forEach.call(document.querySelectorAll('#shopTabs [data-tab]'), function (b) {

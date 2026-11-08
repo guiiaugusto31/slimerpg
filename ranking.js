@@ -79,6 +79,12 @@ function create(store, opts) {
     for (const k of Object.keys(win)) if (win[k] && win[k].acc === acc) out.push(k);
     return out;
   } // semana nova: o placar da semana recomeça do zero
+  // Vencedores da semana passada, para a entrega automática dos prêmios: { week, wins: { ranking: conta } }
+  function lastWinners() {
+    const pid = curWeek() - 1, win = winnersOf([...rows.values()], pid), wins = {};
+    for (const k of Object.keys(win)) if (win[k]) wins[k] = win[k].acc;
+    return { week: pid, wins };
+  }
 
   async function load() {
     for (const r of await store.hallAll()) if (r && typeof r.acc === 'number' && !rows.has(r.acc)) rows.set(r.acc, norm(r));
@@ -205,7 +211,7 @@ function create(store, opts) {
     return out;
   }
 
-  return { load, touch, addPlay, crowned, pvpKill, modeKill, dragonKill, coopKill, forget, flush, boards, claimable, rows, REPEAT_MS };
+  return { load, touch, addPlay, crowned, pvpKill, modeKill, dragonKill, coopKill, forget, flush, boards, claimable, lastWinners, rows, REPEAT_MS };
 }
 
 module.exports = { create, MAX_ROWS, REPEAT_MS };

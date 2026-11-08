@@ -100,9 +100,9 @@ class FileStore {
 }
 
 /* ------------------------------ armazenamento: Postgres ------------------------------ */
-const toAcc = (r) => !r ? null : { id: r.id, email: r.email, pass: r.pass, verified: !!r.verified, created: Number(r.created), save: r.save || null, saveAt: r.save_at == null ? 0 : Number(r.save_at), code: r.code || null, skins: r.skins || null };
-const COLS = { pass: 'pass', verified: 'verified', save: 'save', saveAt: 'save_at', code: 'code', skins: 'skins' };
-const JSONCOLS = new Set(['save', 'code', 'skins']);
+const toAcc = (r) => !r ? null : { id: r.id, email: r.email, pass: r.pass, verified: !!r.verified, created: Number(r.created), save: r.save || null, saveAt: r.save_at == null ? 0 : Number(r.save_at), code: r.code || null, skins: r.skins || null, ref: r.ref || null };
+const COLS = { pass: 'pass', verified: 'verified', save: 'save', saveAt: 'save_at', code: 'code', skins: 'skins', ref: 'ref' };
+const JSONCOLS = new Set(['save', 'code', 'skins', 'ref']);
 class PgStore {
   constructor(pool) { this.kind = 'postgres'; this.persistent = true; this.pool = pool; }
   async ensure(sql) { // "já existe" não é erro (vale também se dois servidores subirem juntos)
@@ -111,6 +111,7 @@ class PgStore {
   async init() {
     await this.ensure('create table accounts (id serial primary key, email text unique not null, pass text not null, verified boolean not null default false, created bigint not null, save jsonb, save_at bigint, code jsonb)');
     await this.ensure('alter table accounts add column skins jsonb'); // bancos criados antes da loja de skins
+    await this.ensure('alter table accounts add column ref jsonb'); // convites: { by: quem convidou, ok: já chegou ao nível, friends: [amigos que contaram] }
     await this.ensure('create table sessions (hash text primary key, acc integer not null references accounts(id) on delete cascade, exp bigint not null)');
     await this.ensure('create table hall (acc integer primary key references accounts(id) on delete cascade, data jsonb not null)');
     await this.purge();
@@ -178,6 +179,8 @@ function makeMailer(env) {
 function create(opts) {
   opts = opts || {};
   const env = opts.env || process.env;
+  // prazo do chapéu de pioneiro (contas criadas antes ganham); os testes desligam com 0
+  const founderUntil = opts.founderUntil !== undefined ? opts.founderUntil : env.FOUNDER_UNTIL !== undefined ? Number(env.FOUNDER_UNTIL) : D.FOUNDER.until;
   let store = opts.store;
   if (!store) {
     if (opts.pool) store = new PgStore(opts.pool);
@@ -264,15 +267,34 @@ function create(opts) {
   });
   // Libera skins para uma conta (prêmios do ranking). Devolve a lista de skins que ela passou a ter.
   const grantSkins = async (accId, ids) => { const next = await setSkins(accId, (sk) => { sk.own = [...new Set(sk.own.concat(ids.filter((id) => D.SKINS[id])))]; return sk; }); return next ? next.own : null; };
-  // Prêmios de torneio entregues automaticamente: a conta com esse e-mail ganha as skins na próxima vez que entrar.
+  // Skins entregues automaticamente ao entrar: prêmios de torneio (por e-mail) e o chapéu de pioneiro (conta criada até o fim de 2026).
   // O e-mail fica guardado só como sha256 (minúsculo, sem espaços), para não aparecer no código público.
   const TORNEIO = [
     { email: '8ac87436aee0a13331f15a0089f989cef24459a42a3ccf18a0e46ab09d7f0835', skins: ['carneiro'] } // campeonato de kills, out/2026
   ];
+  // Convites: o amigo chegou ao nível do convite. Conta uma vez por amigo; no 3º, quem convidou ganha a skin.
+  const refLock = new Map();
+  async function refLevel(accId) {
+    const acc = await store.byId(accId), r = acc && acc.ref;
+    if (!r || !r.by || r.ok) return false;
+    await store.update(accId, { ref: Object.assign({}, r, { ok: true }) });
+    const run = (refLock.get(r.by) || Promise.resolve()).then(async () => { // um amigo por vez para não perder contagem
+      const inv = await store.byId(r.by); if (!inv) return false;
+      const ir = inv.ref || {}, friends = [...new Set((Array.isArray(ir.friends) ? ir.friends : []).concat(accId))];
+      await store.update(inv.id, { ref: Object.assign({}, ir, { friends }) });
+      if (friends.length >= D.REFERRAL.need) await grantSkins(inv.id, [D.REFERRAL.skin]);
+      return true;
+    });
+    refLock.set(r.by, run.catch(() => {}));
+    return run;
+  }
+  const refCode = (id) => id.toString(36);
   async function torneio(acc) {
     if (!acc || !acc.email) return acc;
     const h = sha(normEmail(acc.email)), own = skinsOf(acc).own;
-    const falta = [].concat(...TORNEIO.filter((t) => t.email === h).map((t) => t.skins)).filter((id) => D.SKINS[id] && !own.includes(id));
+    const ganha = [].concat(...TORNEIO.filter((t) => t.email === h).map((t) => t.skins));
+    if (acc.created && acc.created < founderUntil) ganha.push(D.FOUNDER.skin); // pioneiro: conta criada até o fim de 2026
+    const falta = ganha.filter((id) => D.SKINS[id] && !own.includes(id));
     if (!falta.length) return acc;
     const next = await setSkins(acc.id, (sk) => { sk.own = [...new Set(sk.own.concat(falta))]; return sk; });
     if (next) acc.skins = next;
@@ -386,7 +408,7 @@ function create(opts) {
     if (url === '/api/loja' && req.method === 'GET') return reply(res, 200, { enabled: true, contato: CONTATO, pixChave: PIX.key, packs: lojaPacks });
     if (url === '/admin/skin') return req.method === 'POST' ? adminSkin(req, res, ip) : fail(res, 405, 'Método não permitido.');
     if (url === '/admin/senha') return req.method === 'POST' ? adminSenha(req, res, ip) : fail(res, 405, 'Método não permitido.');
-    if (req.method !== 'POST' && url !== '/api/me' && url !== '/api/skins') return fail(res, 405, 'Método não permitido.');
+    if (req.method !== 'POST' && url !== '/api/me' && url !== '/api/skins' && url !== '/api/convite') return fail(res, 405, 'Método não permitido.');
     try { await readyP; } catch (e) { return fail(res, 503, 'As contas estão indisponíveis agora. Tente de novo em instantes.'); }
     const body = req.method === 'POST' ? await readJson(req) : {};
     switch (url) {
@@ -407,6 +429,10 @@ function create(opts) {
             throw e;
           }
         }
+        if (fresh && typeof body.ref === 'string' && /^[0-9a-z]{1,8}$/.test(body.ref)) { // entrou pelo link de convite de alguém
+          const by = parseInt(body.ref, 36);
+          if (by !== acc.id && await store.byId(by)) acc = await store.update(acc.id, { ref: { by, ok: false } });
+        }
         if (mailer) {
           try { await sendCode(acc, 'verify'); } catch (e) {
             console.error('Contas: falha ao enviar e-mail:', e.message);
@@ -424,6 +450,12 @@ function create(opts) {
         const ok = acc ? await checkPw(String(body.password || ''), acc.pass) : (await checkPw(String(body.password || ''), await dummyHash), false);
         if (!ok) return fail(res, 401, 'E-mail ou senha incorretos.');
         return reply(res, 200, pubAcc(acc, await newSession(acc.id)));
+      }
+      case '/api/convite': { // link de convite da conta e quantos amigos já contaram
+        const acc = await auth(bearer(req));
+        if (!acc) return fail(res, 401, 'Sessão expirada.');
+        const ir = acc.ref || {}, n = Array.isArray(ir.friends) ? ir.friends.length : 0;
+        return reply(res, 200, { code: refCode(acc.id), friends: n, need: D.REFERRAL.need, level: D.REFERRAL.level, skin: D.REFERRAL.skin, got: skinsOf(acc).own.includes(D.REFERRAL.skin) });
       }
       case '/api/me': {
         const acc = await auth(bearer(req));
@@ -515,7 +547,7 @@ function create(opts) {
   }
   async function close() { await flush(); if (store.close) await store.close(); clearInterval(gc); }
 
-  return { handle, auth, skinsOf, grantSkins, loadSave, saveProgress, flush, release, ready, close, allowImport, store, status: () => ({ kind: store.kind, persistent: !!store.persistent, mail: !!mailer }) };
+  return { handle, auth, skinsOf, grantSkins, refLevel, loadSave, saveProgress, flush, release, ready, close, allowImport, store, status: () => ({ kind: store.kind, persistent: !!store.persistent, mail: !!mailer }) };
 }
 
 module.exports = { create, FileStore, PgStore, hashPw, checkPw, EMAIL_RE };

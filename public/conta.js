@@ -115,7 +115,8 @@
       var pw = field('acctPw', reg ? 'Senha (8 ou mais caracteres)' : 'Senha', 'password', { autocomplete: reg ? 'new-password' : 'current-password' });
       c.appendChild(form([field('acctEmail', 'E-mail', 'email', { autocomplete: 'email', inputmode: 'email' }), pw, errBox(), submitBtn(reg ? 'Criar conta' : 'Entrar')], function (btn) {
         run(btn, function () {
-          return api('POST', reg ? '/api/register' : '/api/login', { email: val('acctEmail'), password: val('acctPw') }).then(function (r) {
+          var cv = null; try { cv = localStorage.getItem('slimeConvite'); } catch (e) { /* sem armazenamento */ }
+          return api('POST', reg ? '/api/register' : '/api/login', reg && cv ? { email: val('acctEmail'), password: val('acctPw'), ref: cv } : { email: val('acctEmail'), password: val('acctPw') }).then(function (r) {
             if (!r.ok) return setErr(r.body.error || 'Não deu certo. Tente de novo.');
             setSession(r.body);
             if (reg && r.body.verified === false) { st.step = 'code'; render(); } else { close(); }

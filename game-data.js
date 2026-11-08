@@ -222,6 +222,23 @@ const ITEM_LIMIT = 1;      // no máximo 1 de cada item no inventário (o mesmo 
 const PLAYER_REGEN = 0.005;    // vida que o jogador recupera por segundo (fração da vida máxima), o tempo todo, mesmo levando dano
 const PLAYER_STUN_MULT = 0.5;  // atordoamento em jogadores dura esta fração do tempo que dura nos monstros
 const PVP_DAMAGE = 0.6; // dano entre jogadores: 60% do normal (nerf de 40%); contra monstros e dragão não muda
+// Evento semanal "Hora do Slime": toda sexta das 20h às 21h (Brasília, UTC-3) o XP vale em dobro em todos os modos.
+// Serve para juntar a galera no mesmo horário (o menu mostra quanto falta e o link do Discord).
+const EVENT = { name: 'Hora do Slime', day: 5, hour: 20, minutes: 60, xp: 2 }; // day: 0 = domingo ... 5 = sexta
+// Situação do evento no instante t (ms): { on, start, end } com o início/fim do evento atual ou do próximo.
+function eventAt(t) {
+  const BR = 3 * 3600000, local = new Date(t - BR); // relógio de Brasília (sem horário de verão)
+  const base = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), EVENT.hour) + BR;
+  let start = base + ((EVENT.day - local.getUTCDay() + 7) % 7) * 86400000;
+  if (start + EVENT.minutes * 60000 <= t) start += 7 * 86400000;
+  const end = start + EVENT.minutes * 60000;
+  return { on: t >= start && t < end, start, end };
+}
+const eventXpMul = (t) => (eventAt(t).on ? EVENT.xp : 1);
+// Convites: cada conta tem um link; quando `need` amigos que entraram por ele chegam ao nível `level`, ela ganha a skin `skin`
+const REFERRAL = { need: 3, level: 5, skin: 'amigo' };
+// Pioneiros: toda conta criada antes de `until` (01/01/2027 00:00 em Brasília) ganha a skin `skin`
+const FOUNDER = { skin: 'pioneiro', until: Date.UTC(2027, 0, 1, 3), label: '31/12/2026' };
 const PVP_XP_FRAC = 0.4;   // XP por matar jogador = 40% de todo o XP que a vítima tinha (totalXp)
 const NEWBIE_LEVEL = 0;    // até este nível ninguém luta contra jogadores (nem bate, nem apanha). 0 = PvP ligado para todos, desde o nível 1
 const PK_MIN_LEVEL = 8;    // a missão 'derrotar jogadores' só conta vítimas deste nível para cima
@@ -324,6 +341,10 @@ const SKINS = {
   dragao_ouro: { name: 'Cabeça de dragão dourada', slot: 'head', code: 8, prize: true },
   // Prêmio de torneio (não está à venda nem é semanal): o administrador libera pela conta do vencedor
   carneiro: { name: 'Chifres de carneiro', slot: 'head', code: 9, prize: true, torneio: true },
+  // Prêmio por convite: chega quando 3 amigos convidados pelo seu link alcançam o nível 5
+  amigo: { name: 'Coroa da amizade', slot: 'head', code: 10, prize: true, convite: true },
+  // Exclusiva de quem criou a conta até o fim de 2026 (chega sozinha ao entrar)
+  pioneiro: { name: 'Chapéu de pioneiro', slot: 'head', code: 11, prize: true, pioneiro: true },
   lapide: { name: 'Lápide (ao abater)', slot: 'kill', code: 1, prize: true },
   lapide_ouro: { name: 'Lápide dourada (ao abater)', slot: 'kill', code: 2, prize: true }
 };
@@ -371,11 +392,12 @@ function publicData() {
   return {
     MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS,
     ATTR_NAMES, FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, RES_PER_TIER, RES_CAP, QUESTS, POINTS_PER_LEVEL, ATTR_MAX,
-    ITEM_LIMIT, PVP_XP_FRAC, PVP_DAMAGE, NEWBIE_LEVEL, PK_MIN_LEVEL, SKIN_SLOTS, SKINS, SKIN_PACKS, WEEK_PRIZES, MODES
+    ITEM_LIMIT, PVP_XP_FRAC, PVP_DAMAGE, NEWBIE_LEVEL, PK_MIN_LEVEL, SKIN_SLOTS, SKINS, SKIN_PACKS, WEEK_PRIZES, MODES, EVENT, REFERRAL, FOUNDER
   };
 }
 
 module.exports = {
+  EVENT, eventAt, eventXpMul, REFERRAL, FOUNDER,
   MAX_PLAYERS, MAX_LEVEL, CATALOG_SIZE, WORLD, TIER_REQ, TIER_MULT, TIER_NAMES, TIER_NAMES_M, TIER_COLORS, MYTHIC_TIER, BOSS, WAND_SPLIT, TRAIL_HEAL, ATTRS, ATTR_NAMES, POINTS_PER_LEVEL, LEVEL_DIE, MODES, ATTR_MAX,
   FAMILIES, ARMORS, ITEMS, BASE_ITEMS, MOBS, ZONES, QUESTS, MOB_COUNT, MOB_RESPAWN, DROP_WEAPON, DROP_ARMOR,
   DROP_MAX_TIER, DROP_MAX_TIER_ARMOR, ITEM_LIMIT, PLAYER_REGEN, PLAYER_STUN_MULT, PVP_XP_FRAC, PVP_DAMAGE, NEWBIE_LEVEL, PK_MIN_LEVEL, TUNE, ONEHIT_MAX_HITS, MIN_HITS, REF_ATTR, mobHpOfTier, hitCap, howToGet, mixName, mixCd, MIX_DMG, xpNeed, totalXp, attrOf, weaponDamage, skillDamage, armorStats, meetsReq, moveSpeed, MOVE_BASE, publicData,

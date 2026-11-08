@@ -115,6 +115,22 @@ async function serveRanking(req, res) {
   }
 }
 
+// Prêmios semanais entregues sozinhos: assim que a semana vira (segunda 00h, Brasília), quem fechou em 1º de cada ranking
+// ganha a skin, sem precisar resgatar. Confere de tempos em tempos; o resgate manual na loja continua valendo.
+const PRIZE_CHECK_MS = 5 * 60 * 1000, prizesGiven = new Set();
+async function autoPrizes() {
+  if (!ranking || !accounts) return;
+  try {
+    const { week, wins } = ranking.lastWinners();
+    for (const board of Object.keys(wins)) {
+      const key = week + ':' + board, prize = D.WEEK_PRIZES[board];
+      if (!prize || prizesGiven.has(key)) continue;
+      await accounts.grantSkins(wins[board], [prize.skin]);
+      prizesGiven.add(key);
+    }
+  } catch (e) { console.error('Prêmios automáticos: erro:', e && e.message); }
+}
+
 // POST /api/ranking/claim: quem fechou a semana passada em 1º lugar de algum ranking resgata a skin do prêmio (o servidor confere; o cliente não decide nada)
 async function claimPrize(req, res) {
   const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
@@ -436,6 +452,7 @@ function killPlayer(room, v, src) {
 
 function addXp(room, p, amount) {
   if (p.level >= D.MAX_LEVEL || amount <= 0) return;
+  amount = Math.round(amount * D.eventXpMul(Date.now())); // Hora do Slime (sexta 20h): XP em dobro
   p.xp += amount;
   ev(room, ['d', Math.round(p.x), Math.round(p.y - p.r - 16), amount, 2]);
   let ups = 0;
@@ -449,6 +466,10 @@ function addXp(room, p, amount) {
       const g = Math.min(1 + Math.floor(Math.random() * D.LEVEL_DIE), D.ATTR_MAX - p.stats[k]);
       p.stats[k] += g; gain[k] += g;
     }
+  }
+  if (ups && p.acct && !p.refDone && p.level >= D.REFERRAL.level && accounts && accounts.refLevel) { // convite: o amigo chegou ao nível 5
+    p.refDone = true;
+    accounts.refLevel(p.acct.id).catch((e) => console.error('Convite: erro:', e && e.message));
   }
   if (ups) {
     if (p.level >= D.MAX_LEVEL) p.xp = 0;
@@ -1365,6 +1386,7 @@ if (!SIM) {
     accounts = require('./accounts').create({ onSkins: (id, sk) => { const ws = online.get(id); const p = ws && ws.p; if (!p || p.gone) return; p.sk = D.skinCode(sk.eq); send(p, skinsMsg(sk)); bcast(p.room, { t: 'sk', id: p.id, k: p.sk }); }, onDelete: (id) => { if (ranking) ranking.forget(id); const ws = online.get(id); if (ws) kick(ws, 'Sua conta foi excluída.'); } });
     ranking = require('./ranking').create(accounts.store);
     rankingReady = accounts.ready().then(() => ranking.load()).catch((e) => { console.error('Ranking: não consegui carregar:', e.message); });
+    rankingReady.then(() => { autoPrizes(); setInterval(autoPrizes, PRIZE_CHECK_MS).unref(); });
   } catch (e) { console.error('Contas desativadas:', e.message); accounts = null; ranking = null; }
 }
 
@@ -1604,7 +1626,11 @@ if (!SIM) {
     });
   }, 30000);
   server.listen(PORT, () => console.log('SlimeRPG rodando em http://localhost:' + PORT));
+  // Hospedagem grátis da Render: o servidor dorme depois de 15 min sem visitas e o próximo jogador espera ~1 min.
+  // O próprio servidor visita o endereço público a cada 10 min para ficar acordado (só roda na Render).
+  const pub = process.env.RENDER_EXTERNAL_URL;
+  if (pub) setInterval(() => { require('https').get(pub.replace(/\/$/, '') + '/manifest.webmanifest', (r) => r.resume()).on('error', () => {}); }, 10 * 60 * 1000).unref();
 }
 
 // exportados para test/sim.js e para o simulador (tools/simular.js)
-module.exports = { killPlayer, saveMsg, bossCdMul, server, wss, rooms, online, getAccounts: () => accounts, getRanking: () => ranking, fmtDur, recalc, addXp, fx, ev, newRoom, makePlayer, spawnPlayer, updateRoom, hit, giveRandom, checkQuests, DT, TICK, BASE_SPEED };
+module.exports = { autoPrizes, killPlayer, saveMsg, bossCdMul, server, wss, rooms, online, getAccounts: () => accounts, getRanking: () => ranking, fmtDur, recalc, addXp, fx, ev, newRoom, makePlayer, spawnPlayer, updateRoom, hit, giveRandom, checkQuests, DT, TICK, BASE_SPEED };

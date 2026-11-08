@@ -48,7 +48,7 @@ async function suite(label, makeStore, reopen) {
   console.log('Skins (' + label + ')');
   let store = await makeStore();
   const granted = [];
-  const acc = create({ store, mailer: null, env: { ADMIN_TOKEN: ADM }, onSkins: (id, sk) => granted.push([id, sk.own.slice()]) });
+  const acc = create({ store, mailer: null, founderUntil: 0, env: { ADMIN_TOKEN: ADM }, onSkins: (id, sk) => granted.push([id, sk.own.slice()]) });
   const { srv, base } = await serve(acc);
 
   const loja = await call(base, 'GET', '/api/loja');
@@ -66,6 +66,41 @@ async function suite(label, makeStore, reopen) {
     const cs = await call(base, 'GET', '/api/skins', null, tok);
     ok(cs.status === 200 && !cs.body.own.includes('carneiro'), 'outras contas não recebem o prêmio do torneio');
     granted.length = 0; // o aviso ao jogo dessa liberação não conta no teste do Mago abaixo
+  }
+  { // convites: 3 amigos pelo link chegam ao nível 5 e quem convidou ganha a coroa da amizade
+    const inv = await call(base, 'POST', '/api/register', { email: 'anfitriao@teste.com', password: 'senha-forte-8' });
+    const cv = await call(base, 'GET', '/api/convite', null, inv.body.token);
+    ok(cv.status === 200 && /^[0-9a-z]+$/.test(cv.body.code) && cv.body.friends === 0 && cv.body.need === 3 && !cv.body.got, 'cada conta tem um código de convite');
+    const ids = [];
+    for (let i = 0; i < 3; i++) {
+      const f = await call(base, 'POST', '/api/register', { email: 'amigo' + i + '@teste.com', password: 'senha-forte-8', ref: cv.body.code });
+      ids.push((await acc.store.byEmail('amigo' + i + '@teste.com')).id);
+      ok(f.status === 200, 'amigo ' + (i + 1) + ' cria a conta pelo link');
+    }
+    ok((await acc.refLevel((await acc.store.byEmail('anfitriao@teste.com')).id)) === false, 'quem não veio por convite não conta para ninguém');
+    await acc.refLevel(ids[0]); await acc.refLevel(ids[0]); await acc.refLevel(ids[1]);
+    let c2 = await call(base, 'GET', '/api/convite', null, inv.body.token);
+    ok(c2.body.friends === 2 && !c2.body.got, 'o mesmo amigo não conta duas vezes; com 2 ainda não ganha');
+    await acc.refLevel(ids[2]);
+    c2 = await call(base, 'GET', '/api/convite', null, inv.body.token);
+    const sk = await call(base, 'GET', '/api/skins', null, inv.body.token);
+    ok(c2.body.friends === 3 && c2.body.got && sk.body.own.includes('amigo'), 'no 3º amigo no nível 5, a coroa da amizade chega sozinha');
+    ok(!Object.values(D.SKIN_PACKS).some((p) => p.skins.includes('amigo')), 'a coroa da amizade não está à venda');
+    granted.length = 0;
+  }
+  { // pioneiros: conta criada até o fim de 2026 ganha o chapéu sozinha; depois do prazo, não
+    const pio = create({ store, mailer: null, env: { ADMIN_TOKEN: ADM } }), sp = await serve(pio);
+    const r1 = await call(sp.base, 'POST', '/api/register', { email: 'pioneira@teste.com', password: 'senha-forte-8' });
+    const s1 = await call(sp.base, 'GET', '/api/skins', null, r1.body.token);
+    ok(s1.status === 200 && s1.body.own.includes('pioneiro'), 'quem cria a conta em 2026 ganha o chapéu de pioneiro');
+    sp.srv.close();
+    const tarde = create({ store, mailer: null, founderUntil: Date.now() - 1000, env: { ADMIN_TOKEN: ADM } }), st2 = await serve(tarde);
+    const r2 = await call(st2.base, 'POST', '/api/register', { email: 'atrasada@teste.com', password: 'senha-forte-8' });
+    const s2 = await call(st2.base, 'GET', '/api/skins', null, r2.body.token);
+    ok(s2.status === 200 && !s2.body.own.includes('pioneiro'), 'conta criada depois do prazo não ganha');
+    st2.srv.close();
+    ok(D.FOUNDER.until === Date.UTC(2027, 0, 1, 3) && !Object.values(D.SKIN_PACKS).some((p) => p.skins.includes('pioneiro')), 'prazo: 31/12/2026 23:59 em Brasília; não está à venda');
+    granted.length = 0;
   }
   ok((await call(base, 'GET', '/api/skins')).status === 401, 'ver skins exige login');
   let s = await call(base, 'GET', '/api/skins', null, tok);
@@ -129,7 +164,7 @@ async function suite(label, makeStore, reopen) {
 
   // persistência
   await acc.flush(); store = await reopen(store);
-  const acc2 = create({ store, mailer: null, env: { ADMIN_TOKEN: ADM } }); const srv2 = await serve(acc2);
+  const acc2 = create({ store, mailer: null, founderUntil: 0, env: { ADMIN_TOKEN: ADM } }); const srv2 = await serve(acc2);
   s = await call(srv2.base, 'GET', '/api/skins', null, tok);
   ok(s.status === 200 && s.body.own.length === 6 && s.body.eq.head === 'cartola', 'skins e equipado sobrevivem a reiniciar');
   ok(acc2.skinsOf({ skins: { own: ['mago', 'fantasma'], eq: { head: 'fantasma' } } }).own.join() === 'mago', 'skin que deixou de existir é ignorada');
@@ -166,6 +201,7 @@ function client(port) {
 
 async function game() {
   console.log('Skins no jogo');
+  process.env.FOUNDER_UNTIL = '0'; // aqui o chapéu de pioneiro atrapalharia as contagens
   require('../server');
   await sleep(300);
   const base = 'http://127.0.0.1:3978';

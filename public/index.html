@@ -8,6 +8,16 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>SlimeRPG</title>
+<meta name="description" content="Jogo online grátis no navegador: seja um slime, derrote monstros fofos, cresça até o nível 20 e enfrente o dragão com outros jogadores. PC e celular.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="SlimeRPG">
+<meta property="og:title" content="SlimeRPG: jogo online de slime no navegador">
+<meta property="og:description" content="Derrote monstros fofos, cresça até o nível 20 e enfrente o dragão. Grátis, no PC e no celular, sem instalar.">
+<meta property="og:url" content="https://slimerpg.onrender.com/">
+<meta property="og:image" content="https://slimerpg.onrender.com/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@500;700;800&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
@@ -48,6 +58,7 @@
       <div id="acctOut">
         <button type="button" id="acctOpen" class="acct-open">Entrar ou criar conta</button>
         <p class="acct-sub">Com uma conta, o progresso fica salvo no servidor e vale em qualquer aparelho.</p>
+        <p class="acct-sub founder-note">Crie sua conta até <b>31/12/2026</b> e ganhe o <b>Chapéu de pioneiro</b>, exclusivo de quem chegou primeiro.</p>
       </div>
       <div id="acctIn" class="acct-row" hidden>
         <span class="acct-who"><b id="acctMail"></b><small id="acctNote"></small></span>
@@ -62,12 +73,14 @@
       <button type="button" role="radio" data-mode="pvp">PvP</button>
     </div>
     <p class="mode-desc" id="modeDesc"></p>
+    <p id="eventInfo" class="event-info" hidden></p>
     <button id="playBtn" class="primary">Entrar na floresta</button>
     <button type="button" id="specBtn" class="acct-open rank-open" title="Câmera livre: você anda pelo mapa sem ser visto e sem lutar">Assistir como espectador</button>
     <p id="saveInfo" class="muted"></p>
     <p id="status" class="status" role="status"></p>
     <button type="button" id="rankOpenTitle" class="acct-open rank-open">Rankings</button>
     <button type="button" id="shopOpenTitle" class="acct-open rank-open">Loja de skins</button>
+    <a id="discordBtn" class="acct-open rank-open discord-btn" href="https://discord.gg/Egks2W6qU" target="_blank" rel="noopener">Discord do jogo: eventos e torneios</a>
     <button type="button" class="acct-open rank-open snd-btn" title="Música e efeitos sonoros">Som: música e efeitos</button>
     <button type="button" id="installBtn" class="acct-open rank-open" hidden>Instalar o jogo no aparelho</button>
     <details class="how">

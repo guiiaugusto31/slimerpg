@@ -518,3 +518,12 @@ body.spec #stats, body.spec #slots, body.spec #btnAttr, body.spec #btnInv, body.
   #invPanel .tabs [data-tab] { padding: 4px 9px; }
   #invPanel .detail { max-height: 22vh; padding: 6px 9px; margin-top: 5px; }
 }
+
+/* Evento semanal (Hora do Slime) e Discord no menu */
+.event-info { margin: 4px 0 8px; padding: 7px 10px; border: 1px solid var(--edge); border-radius: 8px; font-size: 13.5px; line-height: 1.3; color: var(--mist); background: rgba(255, 210, 90, .08); text-align: center; }
+.event-info b { color: var(--amber); }
+.event-info.on { border-color: var(--amber); background: rgba(255, 190, 60, .18); }
+a.discord-btn { display: block; box-sizing: border-box; text-align: center; text-decoration: none; background: linear-gradient(180deg, #6873f2, #4752c4); border-color: #3a43a8; color: #fff; }
+a.discord-btn:hover { border-color: #c9ceff; }
+.invite-link { width: 100%; box-sizing: border-box; margin: 4px 0 6px; padding: 8px; font-size: 13px; border-radius: 6px; border: 1px solid var(--edge); background: rgba(0,0,0,.3); color: var(--mist); }
+.founder-note { color: var(--amber); }
