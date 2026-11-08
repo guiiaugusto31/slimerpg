@@ -449,8 +449,8 @@
     mago:       { w: 0.84, ay: 0.88, lift: 0.105, tilt: -0.04 },
     pirata:     { w: 0.82, ay: 0.74, lift: 0.115, tilt: 0 },
     carneiro:   { w: 0.96, ay: 0.6, lift: 0.075, tilt: 0 },
-    dragao:     { w: 1.0, ay: 0.82, lift: 0.08, tilt: 0 },
-    dragao_ouro: { w: 1.0, ay: 0.82, lift: 0.08, tilt: 0 },
+    dragao:     { w: 1.0, ay: 0.86, lift: 0.1, tilt: 0 },
+    dragao_ouro: { w: 1.0, ay: 0.86, lift: 0.1, tilt: 0 },
     amigo:      { w: 0.88, ay: 0.72, lift: 0.1, tilt: 0 },
     pioneiro:   { w: 0.86, ay: 0.78, lift: 0.1, tilt: 0 }
   };
