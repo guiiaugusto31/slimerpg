@@ -527,3 +527,4 @@ a.discord-btn { display: block; box-sizing: border-box; text-align: center; text
 a.discord-btn:hover { border-color: #c9ceff; }
 .invite-link { width: 100%; box-sizing: border-box; margin: 4px 0 6px; padding: 8px; font-size: 13px; border-radius: 6px; border: 1px solid var(--edge); background: rgba(0,0,0,.3); color: var(--mist); }
 .founder-note { color: var(--amber); }
+.about-link { display: block; margin-top: 10px; text-align: center; font-size: 14px; color: var(--dim); }

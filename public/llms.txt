@@ -1,0 +1,21 @@
+# SlimeRPG
+
+> SlimeRPG is a free online multiplayer browser game (.io style) made by an independent developer from Brazil. You play as a slime in a forest full of cute monsters. No download or install: it runs in any web browser on PC and on mobile phones. Play at https://slimerpg.onrender.com
+
+SlimeRPG é um jogo online grátis de navegador, no estilo .io, feito por um desenvolvedor independente brasileiro. Não precisa instalar: roda no navegador do PC e do celular.
+
+## Key facts
+- Price: free to play. Cosmetic skins only (no pay-to-win).
+- Platform: web browser (Chrome, Edge, Firefox, Safari), desktop and mobile; can also be installed as an app (PWA), optional.
+- Language: Portuguese (Brazil).
+- Players: up to 30 per room, real time.
+- Genre: multiplayer action RPG / .io game with cute monsters.
+- How to play: you only move (WASD/arrows or touch joystick); weapons attack and use skills automatically. Level up to 20, collect weapons and armor, combine two weapons for a mixed skill.
+- Modes: Classic (monsters + PvP + dragon boss), Co-op (everyone together against the dragon, fastest time ranking), PvP (kills ranking).
+- Weekly rankings with exclusive skins for 1st place. Every Friday 8pm Brasília time: double XP ("Hora do Slime").
+- Good for: people looking for a free browser game with no install, a cute .io game, a quick multiplayer game to play with friends on phone or PC.
+
+## Links
+- [Play SlimeRPG](https://slimerpg.onrender.com/)
+- [About the game / Sobre o jogo](https://slimerpg.onrender.com/sobre.html)
+- [Discord community](https://discord.gg/Egks2W6qU)

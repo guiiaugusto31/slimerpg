@@ -11,6 +11,7 @@ let ranking = null, rankingReady = Promise.resolve(); // rankings por conta (ran
 const online = new Map(); // id da conta -> WebSocket em uso (uma conta só joga em um lugar por vez)
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
+const INDEXNOW_KEY = 'a03f77bdf6125e018ecc7732509ec08d'; // chave pública do IndexNow (o arquivo public/<chave>.txt prova que o site é nosso)
 const TICK = 30;
 const DT = 1 / TICK;
 const W = D.WORLD;
@@ -22,7 +23,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
-  '.webmanifest': 'application/manifest+json', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav'
+  '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml; charset=utf-8', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav'
 };
 
 /* ------------------------------ utilidades ------------------------------ */
@@ -1629,6 +1630,13 @@ if (!SIM) {
   // Hospedagem grátis da Render: o servidor dorme depois de 15 min sem visitas e o próximo jogador espera ~1 min.
   // O próprio servidor visita o endereço público a cada 10 min para ficar acordado (só roda na Render).
   const pub = process.env.RENDER_EXTERNAL_URL;
+  // Avisa os buscadores (Bing, Yandex e outros via IndexNow) que as páginas existem/mudaram; uma vez por inicialização.
+  if (pub) setTimeout(() => {
+    const host = pub.replace(/^https?:\/\//, '').replace(/\/$/, ''), key = INDEXNOW_KEY;
+    const body = JSON.stringify({ host, key, keyLocation: 'https://' + host + '/' + key + '.txt', urlList: ['https://' + host + '/', 'https://' + host + '/sobre.html'] });
+    const rq = require('https').request('https://api.indexnow.org/indexnow', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) } }, (r) => { console.log('IndexNow: ' + r.statusCode); r.resume(); });
+    rq.on('error', (e) => console.error('IndexNow: erro:', e.message)); rq.end(body);
+  }, 30000).unref();
   if (pub) setInterval(() => { require('https').get(pub.replace(/\/$/, '') + '/manifest.webmanifest', (r) => r.resume()).on('error', () => {}); }, 10 * 60 * 1000).unref();
 }
 
