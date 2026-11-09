@@ -1744,7 +1744,7 @@ if (!SIM) {
     const rq = require('https').request('https://api.indexnow.org/indexnow', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) } }, (r) => { console.log('IndexNow: ' + r.statusCode); r.resume(); });
     rq.on('error', (e) => console.error('IndexNow: erro:', e.message)); rq.end(body);
   }, 30000).unref();
-  if (pub) setInterval(() => { require('https').get(pub.replace(/\/$/, '') + '/manifest.webmanifest', (r) => r.resume()).on('error', () => {}); }, 10 * 60 * 1000).unref();
+  if (pub && process.env.KEEP_AWAKE !== 'off') setInterval(() => { require('https').get(pub.replace(/\/$/, '') + '/manifest.webmanifest', (r) => r.resume()).on('error', () => {}); }, 10 * 60 * 1000).unref();
 }
 
 // exportados para test/sim.js e para o simulador (tools/simular.js)
